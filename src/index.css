@@ -1,0 +1,19 @@
+:root { --primary: #003399; --bg: #f8fafc; }
+body { margin: 0; background-color: var(--bg); font-family: 'Sarabun', sans-serif; }
+.main-container { display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
+.glass-card { background: white; width: 100%; max-width: 600px; padding: 35px; border-radius: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.1); }
+.logo { width: 160px; display: block; margin: 0 auto 20px; }
+.title, .topic-title { text-align: center; color: var(--primary); margin-bottom: 25px; }
+.form-group { margin-bottom: 18px; }
+.form-group label { display: block; font-weight: bold; margin-bottom: 8px; font-size: 14px; }
+.input-field, .textarea-field { width: 100%; padding: 12px; border: 1px solid #e2e8f0; border-radius: 12px; font-size: 16px; box-sizing: border-box; }
+.helper-input { border: 2px dashed var(--primary); background: #f0f7ff; }
+.textarea-field { height: 180px; resize: none; line-height: 1.5; }
+.suggestion-popup { position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid var(--primary); border-radius: 10px; z-index: 10; box-shadow: 0 4px 15px rgba(0,0,0,0.15); max-height: 200px; overflow-y: auto; }
+.suggestion-item { padding: 12px; cursor: pointer; border-bottom: 1px solid #f1f5f9; font-size: 14px; }
+.suggestion-item:hover { background: #e0e7ff; color: var(--primary); }
+.btn-start, .btn-next, .btn-export { background: var(--primary); color: white; border: none; padding: 14px; width: 100%; border-radius: 12px; font-weight: bold; cursor: pointer; font-size: 16px; }
+.button-group { display: flex; gap: 12px; }
+.btn-back { background: #94a3b8; color: white; border: none; flex: 1; border-radius: 12px; cursor: pointer; font-weight: bold; }
+.btn-next, .btn-export { flex: 2; }
+.btn-export { background: #f59e0b; }
