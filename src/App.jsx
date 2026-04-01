@@ -29,6 +29,16 @@ function App() {
     fetchDrugGroups()
   }, [])
 
+  // --- ฟังก์ชันสำหรับล้างค่าทุกอย่าง ---
+  const handleClearAll = () => {
+    if (window.confirm("คุณต้องการล้างข้อมูลทั้งหมดใช่หรือไม่?")) {
+      setDrugName('')
+      setDrugType('')
+      setContents(Array(8).fill(''))
+      if (drugGroups.length > 0) setDrugGroup(drugGroups[0])
+    }
+  }
+
   const handleHelperSearch = async (val, topicNum) => {
     const newContents = [...contents]
     newContents[topicNum] = val
@@ -209,6 +219,7 @@ function App() {
           <img src="/image/psu-logo.png" alt="PSU Logo" className="nav-logo" />
           <h1 className="nav-title-eng">Medication Label Project</h1>
           <div className="nav-actions">
+            <button className="btn-clear-nav" onClick={handleClearAll}>Clear All</button>
             <button className="btn-export-nav" onClick={handleExportPDF}>Export PDF</button>
             <button className="btn-login-nav">Login</button>
           </div>
