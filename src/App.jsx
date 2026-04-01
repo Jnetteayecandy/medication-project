@@ -206,7 +206,7 @@ function App() {
     <div className="editor-page-wrapper sarabun-font">
       <nav className="main-top-nav">
         <div className="nav-container">
-          <img src="https://www.psu.ac.th/phuket/wp-content/uploads/2019/03/cropped-PSU_PHUKET-EN.png" alt="PSU Logo" className="nav-logo" />
+          <img src="/image/psu-logo.png" alt="PSU Logo" className="nav-logo" />
           <h1 className="nav-title-eng">Medication Label Project</h1>
           <div className="nav-actions">
             <button className="btn-export-nav" onClick={handleExportPDF}>Export PDF</button>
