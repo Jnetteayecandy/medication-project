@@ -1,14 +1,15 @@
-/* App.css - No-Scroll One Page Layout (Fixed Center Title & Horizontal Scroll) */
+/* App.css - Clean Medical UI (Professional Color Version) */
 
-@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@600&family=Sarabun:wght@400;700&display=swap');
+/* Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700&family=Inter:wght@400;500;600&family=Sarabun:wght@400;600&display=swap');
 
-/* ล็อกหน้าจอไม่ให้เลื่อน */
+/* --- Base Layout --- */
 html, body, #root {
   height: 100vh;
   margin: 0;
   overflow: hidden;
-  font-family: 'Sarabun', sans-serif;
-  background-color: #f4f7f9;
+  font-family: 'Inter', 'Sarabun', sans-serif;
+  background-color: #F8FAFC; /* ✅ clean soft background */
 }
 
 .editor-page-wrapper {
@@ -17,16 +18,16 @@ html, body, #root {
   height: 100vh;
 }
 
-/* --- Nav Bar: ปรับจูนให้ Title อยู่กึ่งกลางหน้าจอเสมอ --- */
+/* --- Nav Bar --- */
 .main-top-nav {
-  background-color: #1a1a3a;
+  background-color: #ffffff;
   color: white;
   padding: 0 24px;
   height: 60px;
   display: flex;
   align-items: center;
   box-shadow: 0 2px 10px rgba(0,0,0,0.15);
-  position: relative; /* สำคัญ: เพื่อให้ Title อ้างอิงจุดกึ่งกลางจากแถบ Nav */
+  position: relative;
 }
 
 .nav-container {
@@ -38,16 +39,19 @@ html, body, #root {
 
 .nav-logo { 
   height: 35px; 
-  z-index: 2; /* ให้อยู่เหนือ Title */
+  z-index: 2;
 }
 
+/* Title */
 .nav-title-eng { 
-  font-family: 'Poppins', sans-serif; 
-  font-size: 20px; 
-  color: white; 
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 700;
+  font-size: 20px;
+  letter-spacing: 0px;
+  text-transform: none;
+  color: #1B263B; 
   margin: 0;
-  
-  /* คำสั่งล็อกกึ่งกลางหน้าจอ */
+
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
@@ -59,44 +63,44 @@ html, body, #root {
   display: flex; 
   gap: 12px; 
   align-items: center;
-  z-index: 2; /* ให้อยู่เหนือ Title */
+  z-index: 2;
 }
 
-/* ปุ่ม Clear All */
-.btn-clear-nav {
-  background-color: #f44336;
-  color: white;
-  border: none;
+/* --- Buttons --- */
+.btn-clear-nav,
+.btn-export-nav,
+.btn-login-nav {
   padding: 8px 16px;
-  border-radius: 4px;
+  border-radius: 6px;
   cursor: pointer;
-  font-weight: bold;
+  font-weight: 600;
+  border: none;
+  transition: 0.2s ease;
 }
 
+.btn-clear-nav {
+  background-color: #E63946; /* ✅ better red */
+  color: white;
+  border: 1px solid #E63946;
+}
 .btn-clear-nav:hover {
-  background-color: #d32f2f;
+  background-color: #C1121F;
+  
 }
 
 .btn-export-nav {
-  background-color: #4CAF50;
+  background-color: #0bb46b; /* ✅ teal professional */
   color: white;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-weight: bold;
+  border: 1px solid #0bb46b;
 }
 
 .btn-login-nav {
   background-color: transparent;
-  color: white;
-  border: 1px solid white;
-  padding: 8px 16px;
-  border-radius: 4px;
-  cursor: pointer;
+  color: #006097;
+  border: 1px solid #006097;
 }
 
-/* พื้นที่ Canvas */
+/* --- Canvas --- */
 .pil-editor-canvas {
   flex: 1;
   display: flex;
@@ -112,10 +116,10 @@ html, body, #root {
   gap: 15px;
   width: 95vw;
   height: 85vh;
-  background: white;
+  background: #ffffff;
   padding: 15px;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.1);
-  border-radius: 4px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.08); /* softer shadow */
+  border-radius: 8px;
 }
 
 .pil-column {
@@ -126,19 +130,42 @@ html, body, #root {
   overflow: hidden;
 }
 
-/* กล่องชื่อยา */
+/* --- Drug Name Box --- */
 .name-box-editor {
-  border: 2px solid #000;
+  border: 2px solid #1B263B; /* ✅ match theme */
   padding: 10px;
   text-align: center;
   min-height: 80px;
 }
 
-.input-drug-name { width: 100%; border: none; font-size: 20px; font-weight: bold; text-align: center; outline: none; }
-.select-drug-group { border: none; font-size: 13px; color: #666; text-align-last: center; outline: none; }
-.input-drug-type { border: none; text-align: center; font-style: italic; color: #888; font-size: 12px; width: 100%; outline: none; }
+.input-drug-name {
+  width: 100%;
+  border: none;
+  font-size: 18px;
+  font-weight: 600;
+  text-align: center;
+  outline: none;
+}
 
-/* หัวข้อ Section */
+.select-drug-group {
+  border: none;
+  font-size: 13px;
+  color: #6B7280; /* softer gray */
+  text-align-last: center;
+  outline: none;
+}
+
+.input-drug-type {
+  border: none;
+  text-align: center;
+  font-style: italic;
+  color: #9CA3AF;
+  font-size: 12px;
+  width: 100%;
+  outline: none;
+}
+
+/* --- Section --- */
 .section-block {
   display: flex;
   flex-direction: column;
@@ -147,15 +174,20 @@ html, body, #root {
 }
 
 .section-header-row {
-  background-color: #1a1a3a;
+  background-color: #1B263B; /* ✅ dark navy */
   color: white;
-  padding: 4px 10px;
-  border-radius: 3px;
-  margin-bottom: 2px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  margin-bottom: 4px;
 }
 
-.section-title-text { font-weight: bold; font-size: 13px; }
+.section-title-text {
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  font-size: 13px;
+}
 
+/* --- Textarea --- */
 .textarea-container {
   flex: 1;
   display: flex;
@@ -164,48 +196,48 @@ html, body, #root {
   min-height: 0;
 }
 
-/* --- ทำให้ Textarea เลื่อนซ้ายขวาได้ --- */
 .editable-textarea {
   flex: 1;
   width: 100%;
-  border: 1px solid #f0f0f0;
+  border: 1px solid #E5E7EB; /* ✅ cleaner border */
   padding: 8px;
   font-size: 13.5px;
   line-height: 1.5;
-  background: #fafafa;
+  background: #F9FAFB; /* ✅ soft input bg */
   outline: none;
   resize: none;
-  white-space: pre;       /* ห้ามตัดบรรทัดอัตโนมัติ */
-  overflow-x: auto;       /* เปิดแถบเลื่อนแนวนอน */
-  overflow-y: auto;       /* เปิดแถบเลื่อนแนวตั้งปกติ */
+  white-space: pre;
+  overflow-x: auto;
+  overflow-y: auto;
+  border-radius: 4px;
 }
 
-/* ปรับแต่ง Scrollbar ของ Textarea */
+/* Scrollbar */
 .editable-textarea::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 .editable-textarea::-webkit-scrollbar-thumb {
-  background: #d1d1d1;
+  background: #CBD5E1;
   border-radius: 10px;
 }
 .editable-textarea::-webkit-scrollbar-thumb:hover {
-  background: #1a1a3a;
+  background: #1B263B;
 }
 
-/* Suggestion Popup */
+/* --- Suggestions --- */
 .inline-suggestions {
   position: absolute;
   left: 0;
   right: 0;
   background: white;
-  border: 2px solid #1a1a3a;
+  border: 1px solid #1B263B;
   z-index: 9999;
   max-height: 180px;
   overflow-y: auto;
   overflow-x: auto;
-  box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-  border-radius: 4px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+  border-radius: 6px;
 }
 
 .pop-down { top: 100%; margin-top: 2px; }
@@ -216,22 +248,22 @@ html, body, #root {
   cursor: pointer;
   border-bottom: 1px solid #eee;
   font-size: 12.5px;
-  color: #333;
+  color: #374151;
   white-space: nowrap;
   width: max-content;
   min-width: 100%;
 }
 
 .suggestion-item:hover {
-  background-color: #eef2ff;
+  background-color: #E0F2FE; /* ✅ soft blue hover */
 }
 
-/* Footer */
+/* --- Footer --- */
 .footer-box-editor {
-  border: 1.5px solid #b22222;
+  border: 1.5px solid #D62828;
   padding: 8px;
   text-align: center;
-  color: #b22222;
-  font-weight: bold;
+  color: #D62828;
+  font-weight: 600;
   font-size: 11px;
 }

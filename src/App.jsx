@@ -29,7 +29,7 @@ function App() {
     fetchDrugGroups()
   }, [])
 
-  // --- ฟังก์ชันสำหรับล้างค่าทุกอย่าง ---
+  // --- clear function ---
   const handleClearAll = () => {
     if (window.confirm("คุณต้องการล้างข้อมูลทั้งหมดใช่หรือไม่?")) {
       setDrugName('')
@@ -85,13 +85,13 @@ function App() {
 
   const topics = [
     "",
-    "หัวข้อที่ 1: ยานี้คืออะไร",
-    "หัวข้อที่ 2: ข้อควรรู้ก่อนใช้ยา",
-    "หัวข้อที่ 3: วิธีใช้ยา",
-    "หัวข้อที่ 4: ข้อควรปฏิบัติระหว่างใช้ยา",
-    "หัวข้อที่ 5: อันตรายที่อาจเกิดจากยา",
-    "หัวข้อที่ 6: ควรเก็บยาอย่างไร",
-    "หัวข้อที่ 7: ลักษณะและส่วนประกอบของยา"
+    "1. ยานี้คืออะไร",
+    "2. ข้อควรรู้ก่อนใช้ยา",
+    "3. วิธีใช้ยา",
+    "4. ข้อควรปฏิบัติระหว่างใช้ยา",
+    "5. อันตรายที่อาจเกิดจากยา",
+    "6. ควรเก็บยาอย่างไร",
+    "7. ลักษณะและส่วนประกอบของยา"
   ]
 
   const handleExportPDF = () => {
@@ -217,7 +217,7 @@ function App() {
       <nav className="main-top-nav">
         <div className="nav-container">
           <img src="/image/psu-logo.png" alt="PSU Logo" className="nav-logo" />
-          <h1 className="nav-title-eng">Medication Label Project</h1>
+          <h1 className="nav-title-eng">Madication Lable</h1>
           <div className="nav-actions">
             <button className="btn-clear-nav" onClick={handleClearAll}>Clear All</button>
             <button className="btn-export-nav" onClick={handleExportPDF}>Export PDF</button>
