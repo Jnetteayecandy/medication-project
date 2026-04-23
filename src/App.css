@@ -1,15 +1,21 @@
-/* App.css - Clean Medical UI (Professional Color Version) */
+/* App.css - Updated Professional Typography (Strict Version) */
 
-/* Fonts */
-@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700&family=Inter:wght@400;500;600&family=Sarabun:wght@400;600&display=swap');
+/* Fonts - เพิ่มน้ำหนัก 300, 400, 500 สำหรับส่วนประกอบต่างๆ 
+*/
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;700&family=Inter:wght@300;400;500;600&family=Sarabun:wght@300;400;500;600&display=swap');
 
 /* --- Base Layout --- */
-html, body, #root {
+html,
+body,
+#root {
   height: 100vh;
   margin: 0;
+  padding: 0;
   overflow: hidden;
-  font-family: 'Inter', 'Sarabun', sans-serif;
-  background-color: #F8FAFC; /* ✅ clean soft background */
+  /* เน้น Inter เป็นฟอนต์หลักเพื่อความ Professional */
+  font-family: 'Inter', 'Sarabun', -apple-system, BlinkMacSystemFont, sans-serif;
+  background-color: #F8FAFC;
+  -webkit-font-smoothing: antialiased;
 }
 
 .editor-page-wrapper {
@@ -21,93 +27,145 @@ html, body, #root {
 /* --- Nav Bar --- */
 .main-top-nav {
   background-color: #ffffff;
-  color: white;
   padding: 0 24px;
   height: 60px;
   display: flex;
   align-items: center;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
   position: relative;
 }
 
 .nav-container {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: border-box;
   width: 100%;
+  padding: 0 20px;
 }
 
-.nav-logo { 
-  height: 35px; 
+.nav-logo {
+  height: 32px;
   z-index: 2;
+  opacity: 0.9;
 }
 
-/* Title */
-.nav-title-eng { 
+/* --- ห้ามแก้จุดนี้ตามคำสั่ง (คง Medication Lable เดิมไว้) --- */
+.nav-title-eng {
   font-family: 'Montserrat', sans-serif;
   font-weight: 700;
-  font-size: 20px;
-  letter-spacing: 0px;
-  text-transform: none;
-  color: #1B263B; 
+  font-size: 22px;
+  color: #1B263B;
   margin: 0;
-
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  white-space: nowrap;
-  z-index: 1;
 }
 
-.nav-actions { 
-  display: flex; 
-  gap: 12px; 
+.nav-actions {
+  display: flex;
+  gap: 10px;
   align-items: center;
   z-index: 2;
 }
 
-/* --- Buttons --- */
+/* --- จัดกลุ่ม Layout --- */
+.nav-left-group,
+.nav-left-area {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  flex: 1;
+}
+
+.nav-center-area {
+  flex: 0;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.nav-right-area {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+}
+
+.user-label,
+.user-email-label {
+  color: #006097;
+  font-weight: 400; /* ปรับให้บางลงดูสะอาด */
+  font-size: 0.8rem;
+  padding: 5px 12px;
+  background: #f0f7ff;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+/* --- Buttons (Nav Actions) - ปรับตัวอักษรให้ไม่หนา (Medium 500) --- */
+.btn-save-nav,
 .btn-clear-nav,
 .btn-export-nav,
 .btn-login-nav {
-  padding: 8px 16px;
+  padding: 8px 18px;
   border-radius: 6px;
   cursor: pointer;
-  font-weight: 600;
+  font-weight: 500;
   border: none;
-  transition: 0.2s ease;
+  transition: all 0.2s ease;
+  font-size: 13.5px;
+}
+
+.btn-save-nav {
+  background: #488efdd3;
+  color: white;
+}
+
+.btn-save-nav:hover {
+  background: #2563EB;
+  transform: translateY(-1px);
 }
 
 .btn-clear-nav {
-  background-color: #E63946; /* ✅ better red */
+  background: #d65762e7;
   color: white;
-  border: 1px solid #E63946;
 }
+
 .btn-clear-nav:hover {
-  background-color: #C1121F;
-  
+  background: #D62828;
+  transform: translateY(-1px);
 }
 
 .btn-export-nav {
-  background-color: #0bb46b; /* ✅ teal professional */
+  background: #29ca84e2;
   color: white;
-  border: 1px solid #0bb46b;
+}
+
+.btn-export-nav:hover {
+  background: #029e5a;
+  transform: translateY(-1px);
 }
 
 .btn-login-nav {
-  background-color: transparent;
+  background: transparent;
   color: #006097;
   border: 1px solid #006097;
 }
 
-/* --- Canvas --- */
+.btn-login-nav.logout {
+  background: #588f98c1;
+  color: white;
+  border: none;
+}
+
+.btn-login-nav.logout:hover {
+  background: #475569;
+}
+
+/* --- Editor Canvas --- */
 .pil-editor-canvas {
   flex: 1;
   display: flex;
   justify-content: center;
   align-items: center;
   padding: 10px;
-  overflow: hidden;
 }
 
 .pil-paper-shadow {
@@ -118,8 +176,8 @@ html, body, #root {
   height: 85vh;
   background: #ffffff;
   padding: 15px;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.08); /* softer shadow */
   border-radius: 8px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.06);
 }
 
 .pil-column {
@@ -132,27 +190,31 @@ html, body, #root {
 
 /* --- Drug Name Box --- */
 .name-box-editor {
-  border: 2px solid #1B263B; /* ✅ match theme */
+  border: 1.5px solid #1B263B;
   padding: 10px;
   text-align: center;
-  min-height: 80px;
+  position: relative;
 }
 
 .input-drug-name {
   width: 100%;
   border: none;
   font-size: 18px;
-  font-weight: 600;
+  font-weight: 500;
   text-align: center;
   outline: none;
+  color: #1B263B;
 }
 
 .select-drug-group {
   border: none;
-  font-size: 13px;
-  color: #6B7280; /* softer gray */
-  text-align-last: center;
+  font-size: 12.5px;
+  color: #6B7280;
   outline: none;
+  text-align-last: center;
+  width: 100%;
+  margin: 5px 0;
+  font-weight: 400;
 }
 
 .input-drug-type {
@@ -160,12 +222,57 @@ html, body, #root {
   text-align: center;
   font-style: italic;
   color: #9CA3AF;
-  font-size: 12px;
+  font-size: 11.5px;
   width: 100%;
   outline: none;
+  font-weight: 300;
 }
 
-/* --- Section --- */
+.search-container {
+  position: relative;
+  width: 100%;
+}
+
+.med-suggestions {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+  max-height: 250px;
+  overflow-y: auto;
+}
+
+.med-suggestion-item {
+  padding: 12px 15px;
+  cursor: pointer;
+  text-align: left;
+  border-bottom: 1px solid #F1F5F9;
+  transition: background 0.2s;
+}
+
+.med-suggestion-item:hover {
+  background: #F8FAFC;
+}
+
+.med-suggest-name {
+  font-weight: 500;
+  color: #1E293B;
+  font-size: 13.5px;
+}
+
+.med-suggest-type {
+  font-size: 11.5px;
+  color: #94A3B8;
+  font-style: italic;
+  font-weight: 300;
+}
+
+/* --- Sections & Textarea --- */
 .section-block {
   display: flex;
   flex-direction: column;
@@ -174,20 +281,19 @@ html, body, #root {
 }
 
 .section-header-row {
-  background-color: #1B263B; /* ✅ dark navy */
+  background: #1B263B;
   color: white;
-  padding: 6px 10px;
-  border-radius: 6px;
-  margin-bottom: 4px;
+  padding: 7px 10px;
+  border-radius: 5px;
+  margin-bottom: 5px;
 }
 
 .section-title-text {
-  font-family: 'Inter', sans-serif;
-  font-weight: 600;
-  font-size: 13px;
+  font-weight: 500;
+  font-size: 12.5px;
+  letter-spacing: 0.02em;
 }
 
-/* --- Textarea --- */
 .textarea-container {
   flex: 1;
   display: flex;
@@ -199,71 +305,300 @@ html, body, #root {
 .editable-textarea {
   flex: 1;
   width: 100%;
-  border: 1px solid #E5E7EB; /* ✅ cleaner border */
-  padding: 8px;
-  font-size: 13.5px;
-  line-height: 1.5;
-  background: #F9FAFB; /* ✅ soft input bg */
+  border: 1px solid #E2E8F0;
+  padding: 10px;
+  font-size: 13px;
+  background: #F8FAFC;
   outline: none;
   resize: none;
-  white-space: pre;
-  overflow-x: auto;
-  overflow-y: auto;
   border-radius: 4px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: #334155;
 }
 
-/* Scrollbar */
-.editable-textarea::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-.editable-textarea::-webkit-scrollbar-thumb {
-  background: #CBD5E1;
-  border-radius: 10px;
-}
-.editable-textarea::-webkit-scrollbar-thumb:hover {
-  background: #1B263B;
+/* --- LOGIN PAGE STYLING --- */
+.login-fullscreen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  z-index: 9999;
+  background-color: white;
 }
 
-/* --- Suggestions --- */
+.login-side-blue {
+  flex: 1;
+  height: 100vh;
+  background-image: url('/image/login-bg.jpg');
+  background-size: cover;
+  background-position: center;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  color: white;
+  padding: 40px;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.login-side-blue::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(10, 30, 80, 0.25);
+  z-index: 1;
+}
+
+.blue-content-center {
+  position: relative;
+  z-index: 2;
+  text-align: center;
+  margin-top: auto;
+  margin-bottom: auto;
+}
+
+.blue-content-center h2 {
+  font-size: 2.5rem;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.glass-capsule-footer {
+  position: absolute;
+  bottom: 35px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 65%;
+  height: auto;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(15px);
+  -webkit-backdrop-filter: blur(15px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 100px;
+  padding: 15px 30px;
+  text-align: center;
+  z-index: 2;
+}
+
+.glass-capsule-footer p {
+  margin: 0;
+  font-size: 0.65rem;
+  font-weight: 300;
+  color: rgba(255, 255, 255, 0.85);
+  line-height: 1.6;
+}
+
+/* --- Right Side - Form --- */
+.login-side-white {
+  flex: 1;
+  height: 100vh;
+  background: #F8FAFC;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+}
+
+.login-card {
+  background: white;
+  width: 100%;
+  max-width: 480px;
+  padding: 40px;
+  border-radius: 30px;
+  box-shadow: 0 15px 50px rgba(0,0,0,0.05);
+  border: 1px solid #E5E7EB;
+  text-align: center;
+}
+
+.login-tabs {
+  display: flex;
+  background-color: #F3F4F6;
+  border-radius: 50px;
+  padding: 5px;
+  margin-bottom: 30px;
+  border: 1px solid #E5E7EB;
+  position: relative;
+}
+
+.tab-btn {
+  flex: 1;
+  padding: 12px 0;
+  border: none;
+  background: transparent;
+  border-radius: 50px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #6B7280;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  z-index: 2;
+}
+
+.tab-btn.active {
+  background-color: #3B82F6;
+  color: #ffffff;
+  box-shadow: 0 4px 10px rgba(59, 130, 246, 0.3);
+}
+
+.login-card h1 {
+  color: #1E3A8A;
+  font-size: 1.8rem;
+  font-weight: 600;
+  margin-bottom: 25px;
+}
+
+.input-group {
+  background: #F8FAFC;
+  border-radius: 12px;
+  border: 1px solid #E2E8F0;
+  display: flex;
+  align-items: center;
+  padding: 2px 18px;
+  margin-bottom: 16px;
+}
+
+.input-group input {
+  background: transparent;
+  border: none;
+  outline: none;
+  width: 100%;
+  padding: 12px 0;
+  font-size: 0.95rem;
+  color: #1E293B;
+  font-weight: 400;
+}
+
+.btn-main-login {
+  width: 100%;
+  background: #3B82F6;
+  color: white;
+  border: none;
+  padding: 14px;
+  border-radius: 12px;
+  font-weight: 500;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: 0.2s;
+  margin-top: 10px;
+}
+
+.btn-main-login:hover {
+  background: #2563EB;
+}
+
+.back-btn {
+  position: absolute;
+  top: 25px;
+  right: 25px;
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  cursor: pointer;
+  color: #CBD5E1;
+  transition: 0.2s;
+}
+
+.back-btn:hover {
+  color: #64748B;
+}
+
+.supported-by {
+  margin-top: 35px;
+  border-top: 1px solid #F1F5F9;
+  padding-top: 20px;
+}
+
+.supported-by p {
+  font-size: 0.7rem;
+  color: #94A3B8;
+  margin-bottom: 10px;
+  font-weight: 400;
+}
+
+.supported-by img {
+  height: 28px;
+  opacity: 0.7;
+}
+
+/* --- Suggestions Helper --- */
 .inline-suggestions {
   position: absolute;
   left: 0;
   right: 0;
   background: white;
-  border: 1px solid #1B263B;
+  border: 1px solid #E2E8F0;
   z-index: 9999;
-  max-height: 180px;
+  max-height: 150px;
   overflow-y: auto;
-  overflow-x: auto;
-  box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.08);
   border-radius: 6px;
 }
 
-.pop-down { top: 100%; margin-top: 2px; }
-.pop-up { bottom: 100%; margin-bottom: 2px; }
-
 .suggestion-item {
-  padding: 10px 15px;
+  padding: 9px 12px;
   cursor: pointer;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid #F1F5F9;
   font-size: 12.5px;
-  color: #374151;
-  white-space: nowrap;
-  width: max-content;
-  min-width: 100%;
+  color: #475569;
 }
 
 .suggestion-item:hover {
-  background-color: #E0F2FE; /* ✅ soft blue hover */
+  background: #F0F9FF;
+  color: #0369A1;
 }
 
-/* --- Footer --- */
 .footer-box-editor {
-  border: 1.5px solid #D62828;
+  border: 1px solid #FCA5A5;
+  background: #FFF1F2;
   padding: 8px;
   text-align: center;
-  color: #D62828;
-  font-weight: 600;
+  color: #BE123C;
+  font-weight: 400;
   font-size: 11px;
+  margin-top: auto;
+  border-radius: 4px;
+}
+
+.login-options {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: -5px;
+  margin-bottom: 20px;
+  font-size: 0.85rem;
+  color: #64748B;
+  width: 100%;
+  padding: 0 5px;
+}
+
+.login-options label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-weight: 400;
+}
+
+.login-options input[type="checkbox"] {
+  cursor: pointer;
+  accent-color: #3B82F6;
+}
+
+.login-options a {
+  color: #3B82F6;
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.2s;
+}
+
+.login-options a:hover {
+  color: #2563EB;
+  text-decoration: underline;
 }
