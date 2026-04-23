@@ -114,16 +114,18 @@ function App() {
   }
 
   // --- 6. Project Actions ---
-  const handleClearAll = (silent = false) => {
-    // กลับมามี Confirm แล้วครับ
-    if (silent || window.confirm("คุณต้องการล้างข้อมูลทั้งหมดใช่หรือไม่?")) {
-      setDrugName('')
-      setDrugType('')
-      setContents(Array(8).fill(''))
-      setActiveMedId(null)
-      if (drugGroups.length > 0) setDrugGroup(drugGroups[0])
+  const handleClearAll = (e, silent = false) => {
+    if (e && e.preventDefault) e.preventDefault();
+    if (!silent) {
+      const confirmClear = window.confirm("คุณต้องการล้างข้อมูลยาทั้งหมดใช่หรือไม่?\n(ข้อมูลที่ยังไม่ได้บันทึกจะหายไป)");
+      if (!confirmClear) return;
     }
-  }
+    setDrugName('');
+    setDrugType('');
+    setContents(Array(8).fill(''));
+    setActiveMedId(null);
+    if (drugGroups.length > 0) setDrugGroup(drugGroups[0]);
+  };
 
   // ฟังก์ชันเซฟข้อมูล (Upsert)
   const handleSaveTemplate = async () => {
@@ -447,7 +449,7 @@ function App() {
 
     <div className="nav-right-area">
       <button className="btn-save-nav" onClick={handleSaveTemplate}>Save Template</button>
-      <button className="btn-clear-nav" onClick={handleClearAll}>Clear All</button>
+      <button className="btn-clear-nav" onClick={(e) => handleClearAll(e)}>Clear All</button>
       <button className="btn-export-nav" onClick={handleExportPDF}>Export PDF</button>
       <button className="btn-login-nav logout" onClick={handleLogout}>Logout</button>
     </div>
