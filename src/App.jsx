@@ -44,7 +44,7 @@ function App() {
       setUser(session?.user ?? null)
       if (!session?.user) {
         setShowLogin(true) // เมื่อ logout ให้กลับหน้า login
-        handleClearAll(true) // ล้างข้อมูลในหน้าจอ (silent)
+        handleClearAll(null, true) // ล้างข้อมูลในหน้าจอ (silent)
       }
     })
 
