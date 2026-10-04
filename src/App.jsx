@@ -21,6 +21,18 @@ import {
   downloadQRCodeFile,
   printPackagingSticker
 } from './utils/qrGenerator'
+import DedicatedPdfView from './components/DedicatedPdfView'
+
+const PIL_TOPIC_NAMES = [
+  "",
+  "1. ยานี้คืออะไร",
+  "2. ข้อควรรู้ก่อนใช้ยา",
+  "3. วิธีใช้ยา",
+  "4. ข้อควรปฏิบัติระหว่างใช้ยา",
+  "5. อันตรายที่อาจเกิดจากยา",
+  "6. ควรเก็บยาอย่างไร",
+  "7. ลักษณะและส่วนประกอบของยา"
+]
 
 // Initial default manage data matching mockup
 const DEFAULT_MANAGE_DATA = {
@@ -313,16 +325,31 @@ function App() {
   const [qrCopied, setQrCopied] = useState(false)
   const [qrRegenSuccess, setQrRegenSuccess] = useState(false)
 
+  // --- Dedicated Fullscreen / Mobile PDF View State ---
+  const [isPdfViewMode, setIsPdfViewMode] = useState(() => {
+    if (typeof window === 'undefined') return false
+    const path = window.location.pathname
+    const search = new URLSearchParams(window.location.search)
+    return path.startsWith('/view-pdf') || search.has('med') || search.has('pdf')
+  })
+  const [pdfViewDrug, setPdfViewDrug] = useState(null)
+  const [pdfViewLoading, setPdfViewLoading] = useState(false)
+  const [pdfViewError, setPdfViewError] = useState(null)
+
   // --- 4. Lifecycle & Auth Effects ---
   useEffect(() => {
     if (!authLoading) {
+      if (isPdfViewMode || window.location.pathname.startsWith('/view-pdf')) {
+        setShowLogin(false)
+        return
+      }
       if (!currentUser) {
         setShowLogin(true)
       } else {
         setShowLogin(false)
       }
     }
-  }, [currentUser, authLoading])
+  }, [currentUser, authLoading, isPdfViewMode])
 
   useEffect(() => {
     const fetchDrugGroups = async () => {
@@ -339,42 +366,74 @@ function App() {
     fetchDrugGroups()
   }, [])
 
-  // URL Deep-Linking for QR Code Scanners (?med=<id>)
+  // Dedicated Route Detection for QR Code Scanners (/view-pdf/:id, ?med=<id>, ?pdf=<id>)
   useEffect(() => {
-    const handleUrlDeepLink = async () => {
-      try {
-        const searchParams = new URLSearchParams(window.location.search)
-        const medParam = searchParams.get('med')
-        if (medParam) {
+    const checkPdfRoute = async () => {
+      const pathname = window.location.pathname
+      const searchParams = new URLSearchParams(window.location.search)
+
+      let targetMedId = null
+      if (pathname.startsWith('/view-pdf')) {
+        const segments = pathname.replace(/^\/view-pdf\/?/, '').split('/')
+        if (segments[0]) targetMedId = decodeURIComponent(segments[0].split('?')[0])
+      }
+      if (!targetMedId) {
+        targetMedId = searchParams.get('med') || searchParams.get('pdf')
+      }
+
+      if (targetMedId) {
+        setIsPdfViewMode(true)
+        setShowLogin(false)
+        setPdfViewLoading(true)
+        setPdfViewError(null)
+
+        try {
           const { data, error } = await supabase
             .from('medication_templates')
             .select('*')
-            .eq('id', medParam)
+            .eq('id', targetMedId)
             .maybeSingle()
 
-          if (data && !error) {
-            if (!currentUser) {
-              loginAsGuest()
-            }
-            setActiveMedId(data.id)
-            setActiveMedDetails(data)
-            setDrugName(data.med_name || '')
-            setDrugGroup(data.med_group || '')
-            setDrugType(data.med_type || '')
-            setContents(data.contents || Array(8).fill(''))
-            setCurrentView('editor')
-            setShowLogin(false)
+          if (error) throw error
+          if (!data) {
+            setPdfViewError('ไม่พบเอกสารฉลากยานี้ในระบบฐานข้อมูล')
+          } else {
+            setPdfViewDrug(data)
           }
+        } catch (err) {
+          console.error('Fetch PDF view error:', err)
+          setPdfViewError(err.message || 'เกิดข้อผิดพลาดในการโหลดเอกสาร')
+        } finally {
+          setPdfViewLoading(false)
         }
-      } catch (err) {
-        console.warn('QR Code deep-link fetch error:', err)
       }
     }
 
-    if (!authLoading) {
-      handleUrlDeepLink()
+    checkPdfRoute()
+
+    const handlePopState = () => {
+      const pathname = window.location.pathname
+      if (!pathname.startsWith('/view-pdf') && !window.location.search.includes('med=') && !window.location.search.includes('pdf=')) {
+        setIsPdfViewMode(false)
+        setPdfViewDrug(null)
+      } else {
+        checkPdfRoute()
+      }
     }
-  }, [authLoading, currentUser, loginAsGuest])
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
+
+  const handleBackFromPdfView = () => {
+    setIsPdfViewMode(false)
+    setPdfViewDrug(null)
+    setPdfViewError(null)
+    window.history.pushState({}, '', '/')
+    if (!currentUser) {
+      loginAsGuest()
+    }
+    setCurrentView('dashboard')
+  }
 
 
   // --- 4. Smart Search Logic (ค้นหายาที่เคยเซฟไว้) ---
@@ -966,16 +1025,7 @@ function App() {
     setActiveTopicForSearch(null)
   }
 
-  const topics = [
-    "",
-    "1. ยานี้คืออะไร",
-    "2. ข้อควรรู้ก่อนใช้ยา",
-    "3. วิธีใช้ยา",
-    "4. ข้อควรปฏิบัติระหว่างใช้ยา",
-    "5. อันตรายที่อาจเกิดจากยา",
-    "6. ควรเก็บยาอย่างไร",
-    "7. ลักษณะและส่วนประกอบของยา"
-  ]
+  const topics = PIL_TOPIC_NAMES
 
   // --- 7. PDF Export ---
   const handleExportPDF = () => {
@@ -1112,6 +1162,19 @@ function App() {
           )}
         </div>
       </div>
+    )
+  }
+
+  if (isPdfViewMode) {
+    return (
+      <DedicatedPdfView
+        drug={pdfViewDrug}
+        loading={pdfViewLoading}
+        error={pdfViewError}
+        onBackToHome={handleBackFromPdfView}
+        sarabunBase64={sarabunBase64}
+        topics={topics}
+      />
     )
   }
 
@@ -2780,6 +2843,21 @@ function App() {
                     </svg>
                     <span>Download SVG (Vector)</span>
                   </button>
+
+                  {/* Preview Mobile / QR Scanner Page */}
+                  <a
+                    className="qr-action-btn view-scan"
+                    href={getMedicationLeafletUrl(qrModalMed.id)}
+                    target="_blank"
+                    rel="noreferrer"
+                    title="เปิดดูหน้าพรีวิวเอกสารที่ผู้ป่วยจะเห็นเมื่อสแกน QR Code"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect width="14" height="20" x="5" y="2" rx="2" ry="2" />
+                      <path d="M12 18h.01" />
+                    </svg>
+                    <span>เปิดหน้าพรีวิวฉลากยา</span>
+                  </a>
 
                   {/* Packaging Sticker Print (Admin, Pharmacist, Staff) */}
                   {currentUser && !currentUser.isGuest && (

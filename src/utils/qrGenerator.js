@@ -14,11 +14,23 @@ const STORAGE_BUCKET = 'medication-qrcodes'
 
 /**
  * Get the public deep-link URL for a medication.
- * Works seamlessly with the Single Page App (SPA) query parameter route `?med=<id>`.
+ * Points directly to the dedicated public PDF / mobile leaflet route `/view-pdf/:id`.
+ * Automatically respects production domains on Vercel or custom domains via
+ * VITE_PUBLIC_URL / VITE_APP_URL with fallback to window.location.origin.
  */
 export function getMedicationLeafletUrl(medId) {
-  if (!medId) return window.location.origin
-  return `${window.location.origin}/?med=${encodeURIComponent(medId)}`
+  if (!medId) return (typeof window !== 'undefined' ? window.location.origin : '')
+  
+  let origin = typeof window !== 'undefined' ? window.location.origin : ''
+  if (typeof import.meta !== 'undefined') {
+    if (import.meta.env?.VITE_PUBLIC_URL) {
+      origin = import.meta.env.VITE_PUBLIC_URL.replace(/\/+$/, '')
+    } else if (import.meta.env?.VITE_APP_URL) {
+      origin = import.meta.env.VITE_APP_URL.replace(/\/+$/, '')
+    }
+  }
+
+  return `${origin}/view-pdf/${encodeURIComponent(medId)}`
 }
 
 /**
