@@ -1,36 +1,28 @@
 import QRCode from 'qrcode'
 import { supabase } from '../supabaseClient'
+import { uploadMedicationPdfToStorage, getDirectPdfUrl } from './pdfGenerator'
 
 /**
  * ============================================================================
  * AUTOMATED QR CODE GENERATION & DISTRIBUTION UTILITIES
  * ============================================================================
- * Generates high-redundancy QR codes linking directly to the medication's
- * public leaflet, handles Supabase Storage uploads with Data URL fallbacks,
- * supports PNG/SVG downloads, and formats packaging sticker prints.
+ * Generates high-redundancy QR codes linking DIRECTLY to the medication PDF file
+ * in Supabase Storage ('medication-pdfs') or zero-UI client-side PDF streamer.
+ * Uploads QR code images to 'medication-qrcodes', supports PNG/SVG downloads,
+ * and formats packaging sticker prints.
  */
 
 const STORAGE_BUCKET = 'medication-qrcodes'
 
 /**
- * Get the public deep-link URL for a medication.
- * Points directly to the dedicated public PDF / mobile leaflet route `/view-pdf/:id`.
- * Automatically respects production domains on Vercel or custom domains via
- * VITE_PUBLIC_URL / VITE_APP_URL with fallback to window.location.origin.
+ * Get the direct public PDF deep-link URL for a medication.
+ * Points to the direct Supabase Storage .pdf URL or instant /download-pdf/:id route.
  */
-export function getMedicationLeafletUrl(medId) {
-  if (!medId) return (typeof window !== 'undefined' ? window.location.origin : '')
-  
-  let origin = typeof window !== 'undefined' ? window.location.origin : ''
-  if (typeof import.meta !== 'undefined') {
-    if (import.meta.env?.VITE_PUBLIC_URL) {
-      origin = import.meta.env.VITE_PUBLIC_URL.replace(/\/+$/, '')
-    } else if (import.meta.env?.VITE_APP_URL) {
-      origin = import.meta.env.VITE_APP_URL.replace(/\/+$/, '')
-    }
+export function getMedicationLeafletUrl(medId, directPdfUrl = null) {
+  if (directPdfUrl && (directPdfUrl.startsWith('http://') || directPdfUrl.startsWith('https://'))) {
+    return directPdfUrl
   }
-
-  return `${origin}/view-pdf/${encodeURIComponent(medId)}`
+  return getDirectPdfUrl(medId)
 }
 
 /**
@@ -84,9 +76,8 @@ export async function generateQRCodeSVG(text, customOptions = {}) {
 }
 
 /**
- * Upload generated QR code to Supabase Storage.
- * If Supabase Storage bucket is not yet provisioned or network fails,
- * gracefully falls back to returning the Base64 Data URL so the app never breaks.
+ * Upload generated QR code to Supabase Storage ('medication-qrcodes').
+ * Gracefully falls back to Base64 Data URL if storage is unprovisioned.
  */
 export async function uploadQRCodeToStorage(medId, dataUrl) {
   if (!medId || !dataUrl) return dataUrl
@@ -106,7 +97,7 @@ export async function uploadQRCodeToStorage(medId, dataUrl) {
       })
 
     if (uploadError) {
-      console.warn(`Supabase Storage upload failed (${uploadError.message}). Falling back to Base64 Data URL.`)
+      console.warn(`Supabase Storage QR upload notice (${uploadError.message}). Using Base64 Data URL.`)
       return dataUrl
     }
 
@@ -121,29 +112,57 @@ export async function uploadQRCodeToStorage(medId, dataUrl) {
 
     return dataUrl
   } catch (err) {
-    console.warn('Supabase storage upload error. Using Base64 fallback:', err)
+    console.warn('Supabase storage QR upload error. Using Base64 fallback:', err)
     return dataUrl
   }
 }
 
 /**
- * Automated end-to-end QR Code generation for a medication:
- * 1. Generates leaflet URL
- * 2. Generates QR image (PNG Data URL)
- * 3. Uploads to Supabase Storage (with Base64 fallback)
- * 4. Returns both the storage URL/Data URL and the raw SVG
+ * Automated end-to-end Direct PDF & QR Code generation for a medication:
+ * 1. Generates Landscape A4 PDF and uploads to 'medication-pdfs' bucket
+ * 2. Resolves direct .pdf URL (Supabase Storage public URL or /download-pdf/:id)
+ * 3. Encodes direct .pdf URL into QR Code (PNG & SVG)
+ * 4. Uploads QR image to 'medication-qrcodes' bucket
+ * 5. Returns directPdfUrl for saving into medication_templates.qr_code_url
  */
-export async function generateAndDistributeQRCode(medId) {
-  const leafletUrl = getMedicationLeafletUrl(medId)
-  const dataUrl = await generateQRCodeDataURL(leafletUrl)
-  const svgString = await generateQRCodeSVG(leafletUrl)
-  const finalUrl = await uploadQRCodeToStorage(medId, dataUrl)
+export async function generateAndDistributeQRCode(medInput) {
+  const isObject = typeof medInput === 'object' && medInput !== null
+  const medId = isObject ? medInput.id : medInput
+  const medData = isObject ? medInput : null
+
+  let directPdfUrl = null
+
+  // 1. If drug data is provided, upload PDF to Supabase Storage 'medication-pdfs'
+  if (medId && medData) {
+    try {
+      directPdfUrl = await uploadMedicationPdfToStorage(medId, medData)
+    } catch (e) {
+      console.warn('PDF storage upload failed, will use fallback direct route:', e)
+    }
+  }
+
+  // 2. If already saved as a valid storage URL
+  if (!directPdfUrl && medData?.qr_code_url && medData.qr_code_url.startsWith('http') && medData.qr_code_url.includes('.pdf')) {
+    directPdfUrl = medData.qr_code_url
+  }
+
+  // 3. Fallback to client-side zero-UI download route
+  if (!directPdfUrl) {
+    directPdfUrl = getDirectPdfUrl(medId)
+  }
+
+  // 4. Generate QR code encoding the DIRECT PDF URL
+  const dataUrl = await generateQRCodeDataURL(directPdfUrl)
+  const svgString = await generateQRCodeSVG(directPdfUrl)
+  const qrStorageUrl = await uploadQRCodeToStorage(medId, dataUrl)
 
   return {
-    leafletUrl,
+    leafletUrl: directPdfUrl, // Direct PDF link encoded in the QR
+    directPdfUrl,
     dataUrl,
     svgString,
-    finalUrl
+    finalUrl: directPdfUrl,   // Direct PDF URL to store in db (qr_code_url column)
+    qrImageUrl: qrStorageUrl || dataUrl
   }
 }
 
@@ -179,7 +198,7 @@ export function downloadQRCodeFile(content, filename = 'medication-qr', format =
 
 /**
  * Print standard medical packaging sticker containing the QR Code.
- * Fits standard 80mm x 50mm label sticker sheets.
+ * Fits standard 80mm x 52mm label sticker sheets.
  */
 export function printPackagingSticker(drug, qrImageSrc) {
   const printWindow = window.open('', '_blank', 'width=700,height=550')
@@ -188,10 +207,10 @@ export function printPackagingSticker(drug, qrImageSrc) {
     return
   }
 
-  const drugName = drug?.med_name || 'Medication'
-  const drugType = drug?.med_type || 'Prescription Drug'
-  const drugGroup = drug?.med_group || 'General Pharmacy'
-  const leafletUrl = getMedicationLeafletUrl(drug?.id)
+  const drugName = drug?.med_name || drug?.drugName || 'Medication'
+  const drugType = drug?.med_type || drug?.drugType || 'Prescription Drug'
+  const drugGroup = drug?.med_group || drug?.drugGroup || 'General Pharmacy'
+  const directPdfUrl = getMedicationLeafletUrl(drug?.id, drug?.qr_code_url)
   const dateStr = new Date().toLocaleDateString('th-TH', {
     year: 'numeric',
     month: 'short',
@@ -338,13 +357,13 @@ export function printPackagingSticker(drug, qrImageSrc) {
             <div class="med-name">${drugName}</div>
             <div class="med-type">${drugType}</div>
             <div class="scan-instructions">
-              สแกน QR Code ด้วยกล้องสมาร์ทโฟน เพื่อเปิดอ่านเอกสารกำกับยาและวิธีใช้ยาอย่างละเอียด
+              สแกน QR Code ด้วยกล้องสมาร์ทโฟน เพื่อเปิดเอกสารกำกับยาฉบับ PDF โดยตรงทันที
             </div>
           </div>
         </div>
 
         <div class="sticker-footer">
-          <span class="url-preview">${leafletUrl}</span>
+          <span class="url-preview">${directPdfUrl}</span>
           <span>Printed: ${dateStr}</span>
         </div>
 
@@ -363,3 +382,4 @@ export function printPackagingSticker(drug, qrImageSrc) {
   printWindow.document.write(htmlContent)
   printWindow.document.close()
 }
+

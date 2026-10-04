@@ -1,7 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from './supabaseClient'
-import jsPDF from 'jspdf'
-import { sarabunBase64 } from './thaiFont'
 import './App.css'
 import { useAuth, ROLES } from './context/AuthContext'
 import {
@@ -14,25 +12,19 @@ import {
   getPermissionDenialReason
 } from './utils/permissions'
 import {
-  getMedicationLeafletUrl,
   generateQRCodeDataURL,
   generateQRCodeSVG,
   generateAndDistributeQRCode,
   downloadQRCodeFile,
   printPackagingSticker
 } from './utils/qrGenerator'
+import {
+  generateMedicationPdfDoc,
+  generateMedicationPdfBlob,
+  getDirectPdfUrl,
+  PIL_TOPIC_NAMES
+} from './utils/pdfGenerator'
 import DedicatedPdfView from './components/DedicatedPdfView'
-
-const PIL_TOPIC_NAMES = [
-  "",
-  "1. ยานี้คืออะไร",
-  "2. ข้อควรรู้ก่อนใช้ยา",
-  "3. วิธีใช้ยา",
-  "4. ข้อควรปฏิบัติระหว่างใช้ยา",
-  "5. อันตรายที่อาจเกิดจากยา",
-  "6. ควรเก็บยาอย่างไร",
-  "7. ลักษณะและส่วนประกอบของยา"
-]
 
 // Initial default manage data matching mockup
 const DEFAULT_MANAGE_DATA = {
@@ -336,10 +328,25 @@ function App() {
   const [pdfViewLoading, setPdfViewLoading] = useState(false)
   const [pdfViewError, setPdfViewError] = useState(null)
 
+  // --- Direct PDF Download / Stream State (Zero-UI mode for QR scanning) ---
+  const [isDirectPdfMode, setIsDirectPdfMode] = useState(() => {
+    if (typeof window === 'undefined') return false
+    const path = window.location.pathname
+    const search = new URLSearchParams(window.location.search)
+    return path.startsWith('/download-pdf') || search.has('download_pdf')
+  })
+  const [directPdfLoading, setDirectPdfLoading] = useState(false)
+  const [directPdfError, setDirectPdfError] = useState(null)
+
   // --- 4. Lifecycle & Auth Effects ---
   useEffect(() => {
     if (!authLoading) {
-      if (isPdfViewMode || window.location.pathname.startsWith('/view-pdf')) {
+      if (
+        isDirectPdfMode ||
+        window.location.pathname.startsWith('/download-pdf') ||
+        isPdfViewMode ||
+        window.location.pathname.startsWith('/view-pdf')
+      ) {
         setShowLogin(false)
         return
       }
@@ -349,7 +356,7 @@ function App() {
         setShowLogin(false)
       }
     }
-  }, [currentUser, authLoading, isPdfViewMode])
+  }, [currentUser, authLoading, isPdfViewMode, isDirectPdfMode])
 
   useEffect(() => {
     const fetchDrugGroups = async () => {
@@ -418,6 +425,88 @@ function App() {
         setPdfViewDrug(null)
       } else {
         checkPdfRoute()
+      }
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
+
+  // Direct PDF Route Detection for instant download/view (/download-pdf/:id, ?download_pdf=<id>)
+  useEffect(() => {
+    const checkDirectPdfRoute = async () => {
+      const pathname = window.location.pathname
+      const searchParams = new URLSearchParams(window.location.search)
+
+      let targetMedId = null
+      if (pathname.startsWith('/download-pdf')) {
+        const segments = pathname.replace(/^\/download-pdf\/?/, '').split('/')
+        if (segments[0]) targetMedId = decodeURIComponent(segments[0].split('?')[0])
+      }
+      if (!targetMedId) {
+        targetMedId = searchParams.get('download_pdf')
+      }
+
+      if (targetMedId) {
+        setIsDirectPdfMode(true)
+        setShowLogin(false)
+        setDirectPdfLoading(true)
+        setDirectPdfError(null)
+
+        try {
+          const { data, error } = await supabase
+            .from('medication_templates')
+            .select('*')
+            .eq('id', targetMedId)
+            .maybeSingle()
+
+          if (error) throw error
+          if (!data) {
+            setDirectPdfError('ไม่พบเอกสารฉลากยานี้ในระบบฐานข้อมูล')
+            return
+          }
+
+          // If medication already has a Supabase Storage direct .pdf URL, redirect to it immediately!
+          if (data.qr_code_url && data.qr_code_url.startsWith('http') && data.qr_code_url.includes('.pdf')) {
+            window.location.replace(data.qr_code_url)
+            return
+          }
+
+          // Otherwise generate PDF in browser memory and trigger instant view / download
+          const pdfBlob = generateMedicationPdfBlob(data, PIL_TOPIC_NAMES)
+          const blobUrl = URL.createObjectURL(pdfBlob)
+
+          const cleanName = (data.med_name || 'เอกสารฉลากยา').replace(/[^a-zA-Z0-9_\u0E00-\u0E7F-]/g, '_')
+          const link = document.createElement('a')
+          link.href = blobUrl
+          link.download = `ฉลากยา_${cleanName}.pdf`
+          document.body.appendChild(link)
+          link.click()
+          document.body.removeChild(link)
+
+          setTimeout(() => {
+            try {
+              window.location.replace(blobUrl)
+            } catch {
+              // Ignore if browser restricts blob redirection
+            }
+          }, 300)
+        } catch (err) {
+          console.error('Direct PDF error:', err)
+          setDirectPdfError(err.message || 'เกิดข้อผิดพลาดในการโหลดไฟล์ PDF')
+        } finally {
+          setDirectPdfLoading(false)
+        }
+      }
+    }
+
+    checkDirectPdfRoute()
+
+    const handlePopState = () => {
+      const pathname = window.location.pathname
+      if (!pathname.startsWith('/download-pdf') && !window.location.search.includes('download_pdf=')) {
+        setIsDirectPdfMode(false)
+      } else {
+        checkDirectPdfRoute()
       }
     }
     window.addEventListener('popstate', handlePopState)
@@ -836,9 +925,9 @@ function App() {
       let targetMedId = activeMedId;
 
       if (activeMedId) {
-        // Pre-generate / update QR code URL
+        // Pre-generate / update QR code URL and upload PDF
         try {
-          const qrInfo = await generateAndDistributeQRCode(activeMedId)
+          const qrInfo = await generateAndDistributeQRCode({ ...medData, id: activeMedId })
           medData.qr_code_url = qrInfo.finalUrl
         } catch (qrErr) {
           console.warn('QR Code generation notice:', qrErr)
@@ -865,9 +954,9 @@ function App() {
           targetMedId = result.data[0].id
           setActiveMedId(targetMedId)
 
-          // Automatically generate QR code for newly assigned ID and save
+          // Automatically generate PDF and QR code for newly assigned ID and save
           try {
-            const qrInfo = await generateAndDistributeQRCode(targetMedId)
+            const qrInfo = await generateAndDistributeQRCode({ ...medData, id: targetMedId })
             await supabase
               .from('medication_templates')
               .update({ qr_code_url: qrInfo.finalUrl })
@@ -883,7 +972,7 @@ function App() {
       }
 
       if (result.error) throw result.error
-      alert("บันทึกข้อมูลและสร้าง QR Code สำเร็จแล้ว!")
+      alert("บันทึกข้อมูล สร้างเอกสาร PDF และ QR Code สำเร็จแล้ว!")
       fetchAllSavedDrugs()
     } catch (err) {
       alert("Save Error: " + err.message)
@@ -900,12 +989,12 @@ function App() {
     setQrLoading(true)
 
     try {
-      const leafletUrl = getMedicationLeafletUrl(med.id)
-      let dataUrl = med.qr_code_url
-      if (!dataUrl || !dataUrl.startsWith('data:image')) {
-        dataUrl = await generateQRCodeDataURL(leafletUrl)
+      let targetPdfUrl = med.qr_code_url
+      if (!targetPdfUrl || !targetPdfUrl.startsWith('http')) {
+        targetPdfUrl = getDirectPdfUrl(med.id)
       }
-      const svg = await generateQRCodeSVG(leafletUrl)
+      const dataUrl = await generateQRCodeDataURL(targetPdfUrl)
+      const svg = await generateQRCodeSVG(targetPdfUrl)
       setQrDataUrl(dataUrl)
       setQrSvgString(svg)
     } catch (err) {
@@ -941,7 +1030,7 @@ function App() {
     setQrLoading(true)
     setQrRegenSuccess(false)
     try {
-      const qrInfo = await generateAndDistributeQRCode(qrModalMed.id)
+      const qrInfo = await generateAndDistributeQRCode(qrModalMed)
       setQrDataUrl(qrInfo.dataUrl)
       setQrSvgString(qrInfo.svgString)
 
@@ -969,7 +1058,7 @@ function App() {
 
   const handleCopyQrLink = () => {
     if (!qrModalMed?.id) return
-    const link = getMedicationLeafletUrl(qrModalMed.id)
+    const link = qrModalMed.qr_code_url || getDirectPdfUrl(qrModalMed.id)
     if (navigator?.clipboard?.writeText) {
       navigator.clipboard.writeText(link).then(() => {
         setQrCopied(true)
@@ -1030,98 +1119,12 @@ function App() {
   // --- 7. PDF Export ---
   const handleExportPDF = () => {
     try {
-      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
-      doc.addFileToVFS('Sarabun.ttf', sarabunBase64)
-      doc.addFont('Sarabun.ttf', 'Sarabun', 'normal')
-      doc.addFont('Sarabun.ttf', 'Sarabun', 'bold')
-
-      const PW = doc.internal.pageSize.getWidth()
-      const PH = doc.internal.pageSize.getHeight()
-      const MARGIN = 8
-      const GAP = 4
-      const COL_W = (PW - MARGIN * 2 - GAP * 2) / 3
-      const COL_X = [MARGIN, MARGIN + COL_W + GAP, MARGIN + (COL_W + GAP) * 2]
-
-      const NAME_BOX_H = 28
-      const BODY_TOP_C1 = MARGIN + NAME_BOX_H + 5
-      const BODY_TOP = MARGIN
-      const BODY_BOT = PH - MARGIN - 2
-
-      doc.setDrawColor(0, 0, 0)
-      doc.setLineWidth(0.8)
-      doc.rect(COL_X[0], MARGIN, COL_W, NAME_BOX_H)
-
-      doc.setFont('Sarabun', 'bold')
-      doc.setFontSize(13)
-      doc.text(drugName || 'ชื่อยา', COL_X[0] + COL_W / 2, MARGIN + 8, { align: 'center' })
-
-      doc.setFont('Sarabun', 'normal')
-      doc.setFontSize(10)
-      doc.text(drugGroup, COL_X[0] + COL_W / 2, MARGIN + 16, { align: 'center' })
-      doc.text(drugType || 'ใส่ชนิดยา', COL_X[0] + COL_W / 2, MARGIN + 23, { align: 'center' })
-
-      const drawSectionHeader = (x, y, w, text) => {
-        doc.setFillColor(20, 20, 55)
-        doc.rect(x, y, w, 7.5, 'F')
-        doc.setFont('Sarabun', 'bold')
-        doc.setFontSize(10.5)
-        doc.setTextColor(255, 255, 255)
-        doc.text(text, x + w / 2, y + 5.4, { align: 'center' })
-        doc.setTextColor(0, 0, 0)
-        return y + 7.5
-      }
-
-      const drawContent = (x, y, w, text, bottomLimit) => {
-        doc.setFont('Sarabun', 'normal')
-        doc.setFontSize(9)
-        if (!text || text.trim() === '') {
-          doc.setTextColor(150, 150, 150)
-          doc.text('-', x + 4, y + 5)
-          doc.setTextColor(0, 0, 0)
-          return y + 7
-        }
-        const lines = text.trim().split('\n').filter(l => l.trim())
-        let curY = y + 5
-        for (const line of lines) {
-          const wrapped = doc.splitTextToSize('• ' + line.trim(), w - 6)
-          for (const wl of wrapped) {
-            if (curY > bottomLimit) return curY
-            doc.text(wl, x + 4, curY)
-            curY += 4.5
-          }
-        }
-        return curY + 2
-      }
-
-      let y1 = BODY_TOP_C1
-      y1 = drawSectionHeader(COL_X[0], y1, COL_W, topics[1])
-      y1 = drawContent(COL_X[0], y1, COL_W, contents[1], BODY_BOT - 40)
-      y1 = drawSectionHeader(COL_X[0], y1, COL_W, topics[2])
-      drawContent(COL_X[0], y1, COL_W, contents[2], BODY_BOT)
-
-      let y2 = BODY_TOP
-      y2 = drawSectionHeader(COL_X[1], y2, COL_W, topics[3])
-      y2 = drawContent(COL_X[1], y2, COL_W, contents[3], BODY_BOT - 45)
-      y2 = drawSectionHeader(COL_X[1], y2, COL_W, topics[4])
-      drawContent(COL_X[1], y2, COL_W, contents[4], BODY_BOT)
-
-      let y3 = BODY_TOP
-      y3 = drawSectionHeader(COL_X[2], y3, COL_W, topics[5])
-      y3 = drawContent(COL_X[2], y3, COL_W, contents[5], BODY_BOT - 60)
-      y3 = drawSectionHeader(COL_X[2], y3, COL_W, topics[6])
-      y3 = drawContent(COL_X[2], y3, COL_W, contents[6], BODY_BOT - 35)
-      y3 = drawSectionHeader(COL_X[2], y3, COL_W, topics[7])
-      drawContent(COL_X[2], y3, COL_W, contents[7], BODY_BOT - 20)
-
-      const FY = PH - MARGIN - 16
-      doc.setDrawColor(200, 0, 0)
-      doc.setLineWidth(0.8)
-      doc.rect(COL_X[2], FY, COL_W, 16)
-      doc.setFont('Sarabun', 'bold')
-      doc.setFontSize(9)
-      doc.setTextColor(200, 0, 0)
-      doc.text('เอกสารนี้เป็นข้อมูลโดยย่อ', COL_X[2] + COL_W / 2, FY + 6, { align: 'center' })
-      doc.text('หากมีข้อสงสัยให้ปรึกษาแพทย์หรือเภสัชกร', COL_X[2] + COL_W / 2, FY + 12, { align: 'center' })
+      const doc = generateMedicationPdfDoc({
+        med_name: drugName,
+        med_group: drugGroup,
+        med_type: drugType,
+        contents: contents
+      }, topics)
       doc.save(`ฉลากยา_${drugName || 'Export'}.pdf`)
     } catch (err) {
       alert('PDF Error: ' + err.message)
@@ -1165,6 +1168,35 @@ function App() {
     )
   }
 
+  if (isDirectPdfMode) {
+    return (
+      <div className="direct-pdf-screen">
+        {directPdfLoading ? (
+          <div className="direct-pdf-loading-box">
+            <div className="direct-pdf-spinner"></div>
+            <p className="direct-pdf-text-th">กำลังเปิดเอกสารฉลากยา PDF...</p>
+            <p className="direct-pdf-text-en">Opening PDF document...</p>
+          </div>
+        ) : directPdfError ? (
+          <div className="direct-pdf-error-box">
+            <div className="direct-pdf-error-icon">⚠️</div>
+            <h3 className="direct-pdf-error-title">เกิดข้อผิดพลาด</h3>
+            <p className="direct-pdf-error-msg">{directPdfError}</p>
+            <button className="direct-pdf-btn-back" onClick={() => window.location.href = '/'}>
+              กลับหน้าหลัก
+            </button>
+          </div>
+        ) : (
+          <div className="direct-pdf-loading-box">
+            <div className="direct-pdf-spinner"></div>
+            <p className="direct-pdf-text-th">กำลังเปิดไฟล์ PDF สำหรับคุณ...</p>
+            <p className="direct-pdf-text-en">หากไฟล์ไม่เปิดอัตโนมัติ กรุณารอสักครู่หรือโหลดใหม่อีกครั้ง</p>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   if (isPdfViewMode) {
     return (
       <DedicatedPdfView
@@ -1172,7 +1204,6 @@ function App() {
         loading={pdfViewLoading}
         error={pdfViewError}
         onBackToHome={handleBackFromPdfView}
-        sarabunBase64={sarabunBase64}
         topics={topics}
       />
     )
@@ -2775,18 +2806,18 @@ function App() {
                     <path d="M12 18h.01" />
                     <path d="M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z" />
                   </svg>
-                  <span>Scan to open Patient Information Leaflet (PIL)</span>
+                  <span>สแกนด้วยกล้องมือถือเพื่อเปิดไฟล์ PDF โดยตรง (Direct PDF Link)</span>
                 </div>
               </div>
 
               {/* Deep Link URL Box */}
               <div className="qr-url-card">
-                <label className="qr-url-label">Public Access URL (Direct Leaflet Link)</label>
+                <label className="qr-url-label">Direct PDF URL (ลิงก์ตรงสำหรับเปิดเอกสาร PDF)</label>
                 <div className="qr-url-row">
                   <input
                     type="text"
                     readOnly
-                    value={getMedicationLeafletUrl(qrModalMed.id)}
+                    value={qrModalMed.qr_code_url || getDirectPdfUrl(qrModalMed.id)}
                     className="qr-url-input"
                   />
                   <button
@@ -2844,19 +2875,22 @@ function App() {
                     <span>Download SVG (Vector)</span>
                   </button>
 
-                  {/* Preview Mobile / QR Scanner Page */}
+                  {/* Open Direct PDF File */}
                   <a
                     className="qr-action-btn view-scan"
-                    href={getMedicationLeafletUrl(qrModalMed.id)}
+                    href={qrModalMed.qr_code_url || getDirectPdfUrl(qrModalMed.id)}
                     target="_blank"
                     rel="noreferrer"
-                    title="เปิดดูหน้าพรีวิวเอกสารที่ผู้ป่วยจะเห็นเมื่อสแกน QR Code"
+                    title="เปิดไฟล์เอกสารฉลากยา PDF โดยตรง"
                   >
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                      <rect width="14" height="20" x="5" y="2" rx="2" ry="2" />
-                      <path d="M12 18h.01" />
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                      <polyline points="14 2 14 8 20 8" />
+                      <line x1="16" y1="13" x2="8" y2="13" />
+                      <line x1="16" y1="17" x2="8" y2="17" />
+                      <polyline points="10 9 9 9 8 9" />
                     </svg>
-                    <span>เปิดหน้าพรีวิวฉลากยา</span>
+                    <span>เปิดไฟล์ PDF โดยตรง</span>
                   </a>
 
                   {/* Packaging Sticker Print (Admin, Pharmacist, Staff) */}

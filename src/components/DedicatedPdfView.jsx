@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
-import jsPDF from 'jspdf'
+import { generateMedicationPdfDoc } from '../utils/pdfGenerator'
 import './DedicatedPdfView.css'
 
 export default function DedicatedPdfView({
@@ -7,7 +7,6 @@ export default function DedicatedPdfView({
   loading,
   error,
   onBackToHome,
-  sarabunBase64,
   topics
 }) {
   const [activeTab, setActiveTab] = useState('mobile_view') // 'mobile_view' | 'pdf_preview'
@@ -17,111 +16,14 @@ export default function DedicatedPdfView({
 
   // Generate Landscape A4 PDF Document
   const pdfInstance = useMemo(() => {
-    if (!drug || !sarabunBase64) return null
+    if (!drug) return null
     try {
-      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
-      doc.addFileToVFS('Sarabun.ttf', sarabunBase64)
-      doc.addFont('Sarabun.ttf', 'Sarabun', 'normal')
-      doc.addFont('Sarabun.ttf', 'Sarabun', 'bold')
-
-      const PW = doc.internal.pageSize.getWidth()
-      const PH = doc.internal.pageSize.getHeight()
-      const MARGIN = 8
-      const GAP = 4
-      const COL_W = (PW - MARGIN * 2 - GAP * 2) / 3
-      const COL_X = [MARGIN, MARGIN + COL_W + GAP, MARGIN + (COL_W + GAP) * 2]
-
-      const NAME_BOX_H = 28
-      const BODY_TOP_C1 = MARGIN + NAME_BOX_H + 5
-      const BODY_TOP = MARGIN
-      const BODY_BOT = PH - MARGIN - 2
-
-      // Name Box
-      doc.setDrawColor(0, 0, 0)
-      doc.setLineWidth(0.8)
-      doc.rect(COL_X[0], MARGIN, COL_W, NAME_BOX_H)
-
-      doc.setFont('Sarabun', 'bold')
-      doc.setFontSize(13)
-      doc.text(drug.med_name || 'ชื่อยา', COL_X[0] + COL_W / 2, MARGIN + 8, { align: 'center' })
-
-      doc.setFont('Sarabun', 'normal')
-      doc.setFontSize(10)
-      doc.text(drug.med_group || '', COL_X[0] + COL_W / 2, MARGIN + 16, { align: 'center' })
-      doc.text(drug.med_type || 'ใส่ชนิดยา', COL_X[0] + COL_W / 2, MARGIN + 23, { align: 'center' })
-
-      const drawSectionHeader = (x, y, w, text) => {
-        doc.setFillColor(20, 20, 55)
-        doc.rect(x, y, w, 7.5, 'F')
-        doc.setFont('Sarabun', 'bold')
-        doc.setFontSize(10.5)
-        doc.setTextColor(255, 255, 255)
-        doc.text(text, x + w / 2, y + 5.4, { align: 'center' })
-        doc.setTextColor(0, 0, 0)
-        return y + 7.5
-      }
-
-      const drawContent = (x, y, w, text, bottomLimit) => {
-        doc.setFont('Sarabun', 'normal')
-        doc.setFontSize(9)
-        if (!text || text.trim() === '') {
-          doc.setTextColor(150, 150, 150)
-          doc.text('-', x + 4, y + 5)
-          doc.setTextColor(0, 0, 0)
-          return y + 7
-        }
-        const lines = text.trim().split('\n').filter(l => l.trim())
-        let curY = y + 5
-        for (const line of lines) {
-          const wrapped = doc.splitTextToSize('• ' + line.trim(), w - 6)
-          for (const wl of wrapped) {
-            if (curY > bottomLimit) return curY
-            doc.text(wl, x + 4, curY)
-            curY += 4.5
-          }
-        }
-        return curY + 2
-      }
-
-      const contents = drug.contents || Array(8).fill('')
-
-      let y1 = BODY_TOP_C1
-      y1 = drawSectionHeader(COL_X[0], y1, COL_W, topics[1])
-      y1 = drawContent(COL_X[0], y1, COL_W, contents[1], BODY_BOT - 40)
-      y1 = drawSectionHeader(COL_X[0], y1, COL_W, topics[2])
-      drawContent(COL_X[0], y1, COL_W, contents[2], BODY_BOT)
-
-      let y2 = BODY_TOP
-      y2 = drawSectionHeader(COL_X[1], y2, COL_W, topics[3])
-      y2 = drawContent(COL_X[1], y2, COL_W, contents[3], BODY_BOT - 45)
-      y2 = drawSectionHeader(COL_X[1], y2, COL_W, topics[4])
-      drawContent(COL_X[1], y2, COL_W, contents[4], BODY_BOT)
-
-      let y3 = BODY_TOP
-      y3 = drawSectionHeader(COL_X[2], y3, COL_W, topics[5])
-      y3 = drawContent(COL_X[2], y3, COL_W, contents[5], BODY_BOT - 60)
-      y3 = drawSectionHeader(COL_X[2], y3, COL_W, topics[6])
-      y3 = drawContent(COL_X[2], y3, COL_W, contents[6], BODY_BOT - 35)
-      y3 = drawSectionHeader(COL_X[2], y3, COL_W, topics[7])
-      drawContent(COL_X[2], y3, COL_W, contents[7], BODY_BOT - 20)
-
-      // Warning Footer Box
-      const FY = PH - MARGIN - 16
-      doc.setDrawColor(200, 0, 0)
-      doc.setLineWidth(0.8)
-      doc.rect(COL_X[2], FY, COL_W, 16)
-      doc.setFont('Sarabun', 'bold')
-      doc.setFontSize(9)
-      doc.setTextColor(200, 0, 0)
-      doc.text('เอกสารนี้เป็นข้อมูลโดยย่อ', COL_X[2] + COL_W / 2, FY + 6, { align: 'center' })
-      doc.text('หากมีข้อสงสัยให้ปรึกษาแพทย์หรือเภสัชกร', COL_X[2] + COL_W / 2, FY + 12, { align: 'center' })
-
-      return doc
+      return generateMedicationPdfDoc(drug, topics)
     } catch (err) {
       console.error('PDF Build error:', err)
       return null
     }
-  }, [drug, sarabunBase64, topics])
+  }, [drug, topics])
 
   // Create Blob URL for PDF Embed
   useEffect(() => {

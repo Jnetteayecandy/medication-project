@@ -2550,3 +2550,95 @@ body,
   color: #94a3b8;
   padding-top: 4px;
 }
+
+
+/* ============================================================================
+   DIRECT PDF STREAM / DOWNLOAD SCREEN (ZERO-UI MODE)
+   ============================================================================ */
+.direct-pdf-screen {
+  min-height: 100vh;
+  width: 100vw;
+  background-color: #ffffff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  box-sizing: border-box;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Sarabun", sans-serif;
+}
+
+.direct-pdf-loading-box,
+.direct-pdf-error-box,
+.direct-pdf-success-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  max-width: 440px;
+  width: 100%;
+}
+
+.direct-pdf-spinner {
+  width: 44px;
+  height: 44px;
+  border: 3.5px solid #e2e8f0;
+  border-top-color: #2563eb;
+  border-radius: 50%;
+  animation: spin 0.85s linear infinite;
+  margin-bottom: 20px;
+}
+
+.direct-pdf-text-th {
+  font-size: 17px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 6px 0;
+  line-height: 1.4;
+}
+
+.direct-pdf-text-en {
+  font-size: 13px;
+  color: #64748b;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.direct-pdf-error-icon {
+  font-size: 44px;
+  margin-bottom: 12px;
+}
+
+.direct-pdf-error-title {
+  font-size: 19px;
+  font-weight: 700;
+  color: #dc2626;
+  margin: 0 0 8px 0;
+}
+
+.direct-pdf-error-msg {
+  font-size: 14px;
+  color: #475569;
+  margin: 0 0 20px 0;
+  line-height: 1.5;
+}
+
+.direct-pdf-btn-back,
+.direct-pdf-btn-open {
+  padding: 10px 22px;
+  background-color: #2563eb;
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  text-decoration: none;
+  display: inline-block;
+}
+
+.direct-pdf-btn-back:hover,
+.direct-pdf-btn-open:hover {
+  background-color: #1d4ed8;
+}
