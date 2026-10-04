@@ -13,6 +13,14 @@ import {
   isLabelOwner,
   getPermissionDenialReason
 } from './utils/permissions'
+import {
+  getMedicationLeafletUrl,
+  generateQRCodeDataURL,
+  generateQRCodeSVG,
+  generateAndDistributeQRCode,
+  downloadQRCodeFile,
+  printPackagingSticker
+} from './utils/qrGenerator'
 
 // Initial default manage data matching mockup
 const DEFAULT_MANAGE_DATA = {
@@ -191,17 +199,39 @@ function renderUserAvatarIcon(user) {
     )
   }
 
-  // Guest: Clean vector shield outline
+  // Guest: Clean vector user icon
   if (user.role === ROLES.GUEST || user.isGuest) {
     return (
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+        <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+        <circle cx="12" cy="7" r="4" />
       </svg>
     )
   }
 
   const initial = user.name ? user.name.charAt(0).toUpperCase() : (user.role ? user.role.charAt(0) : 'U')
   return <span style={{ fontWeight: 700, fontSize: '13px' }}>{initial}</span>
+}
+
+const AVATAR_COLORS_MAP = {
+  F: '#8b5cf6', // purple (Fexofenadine)
+  I: '#4f46e5', // blue/indigo (Ibuprofen)
+  C: '#ec4899', // pink (Cetirizine)
+  N: '#0d9488', // teal (Naproxen)
+  A: '#f59e0b', // amber
+  P: '#2563eb', // blue
+  B: '#06b6d4', // cyan
+  D: '#10b981', // emerald
+  M: '#6366f1', // indigo
+}
+
+const FALLBACK_PALETTE = ['#8b5cf6', '#4f46e5', '#ec4899', '#0d9488', '#2563eb', '#f59e0b', '#10b981', '#06b6d4']
+
+function getMedAvatarBg(name, index = 0) {
+  if (!name) return '#2563eb'
+  const char = name.trim().charAt(0).toUpperCase()
+  if (AVATAR_COLORS_MAP[char]) return AVATAR_COLORS_MAP[char]
+  return FALLBACK_PALETTE[index % FALLBACK_PALETTE.length]
 }
 
 function App() {
@@ -274,6 +304,15 @@ function App() {
   const [suggestions, setSuggestions] = useState([])
   const searchTimeoutRef = useRef(null)
 
+  // --- QR Code Distribution State ---
+  const [showQrModal, setShowQrModal] = useState(false)
+  const [qrModalMed, setQrModalMed] = useState(null)
+  const [qrDataUrl, setQrDataUrl] = useState('')
+  const [qrSvgString, setQrSvgString] = useState('')
+  const [qrLoading, setQrLoading] = useState(false)
+  const [qrCopied, setQrCopied] = useState(false)
+  const [qrRegenSuccess, setQrRegenSuccess] = useState(false)
+
   // --- 4. Lifecycle & Auth Effects ---
   useEffect(() => {
     if (!authLoading) {
@@ -299,6 +338,44 @@ function App() {
     }
     fetchDrugGroups()
   }, [])
+
+  // URL Deep-Linking for QR Code Scanners (?med=<id>)
+  useEffect(() => {
+    const handleUrlDeepLink = async () => {
+      try {
+        const searchParams = new URLSearchParams(window.location.search)
+        const medParam = searchParams.get('med')
+        if (medParam) {
+          const { data, error } = await supabase
+            .from('medication_templates')
+            .select('*')
+            .eq('id', medParam)
+            .maybeSingle()
+
+          if (data && !error) {
+            if (!currentUser) {
+              loginAsGuest()
+            }
+            setActiveMedId(data.id)
+            setActiveMedDetails(data)
+            setDrugName(data.med_name || '')
+            setDrugGroup(data.med_group || '')
+            setDrugType(data.med_type || '')
+            setContents(data.contents || Array(8).fill(''))
+            setCurrentView('editor')
+            setShowLogin(false)
+          }
+        }
+      } catch (err) {
+        console.warn('QR Code deep-link fetch error:', err)
+      }
+    }
+
+    if (!authLoading) {
+      handleUrlDeepLink()
+    }
+  }, [authLoading, currentUser, loginAsGuest])
+
 
   // --- 4. Smart Search Logic (ค้นหายาที่เคยเซฟไว้) ---
   const handleDrugNameChange = async (val) => {
@@ -373,7 +450,11 @@ function App() {
   }
 
   const handleBackToDashboard = () => {
-    setCurrentView('dashboard')
+    if (currentUser?.isGuest) {
+      setCurrentView('manage_data')
+    } else {
+      setCurrentView('dashboard')
+    }
   }
 
   // --- Manage Data Handlers ---
@@ -693,29 +774,152 @@ function App() {
 
     try {
       let result;
+      let targetMedId = activeMedId;
+
       if (activeMedId) {
+        // Pre-generate / update QR code URL
+        try {
+          const qrInfo = await generateAndDistributeQRCode(activeMedId)
+          medData.qr_code_url = qrInfo.finalUrl
+        } catch (qrErr) {
+          console.warn('QR Code generation notice:', qrErr)
+        }
+
         // ถ้าเป็นยาเก่าที่มี ID อยู่แล้ว ให้ Update
         result = await supabase
           .from('medication_templates')
           .update(medData)
           .eq('id', activeMedId)
+          .select()
+
+        if (result.data && result.data.length > 0) {
+          setActiveMedDetails(result.data[0])
+        }
       } else {
         // ถ้าเป็นยาใหม่ ให้ Insert
         result = await supabase
           .from('medication_templates')
           .insert([medData])
           .select()
+
         if (result.data && result.data.length > 0) {
-          setActiveMedId(result.data[0].id)
-          setActiveMedDetails(result.data[0])
+          targetMedId = result.data[0].id
+          setActiveMedId(targetMedId)
+
+          // Automatically generate QR code for newly assigned ID and save
+          try {
+            const qrInfo = await generateAndDistributeQRCode(targetMedId)
+            await supabase
+              .from('medication_templates')
+              .update({ qr_code_url: qrInfo.finalUrl })
+              .eq('id', targetMedId)
+
+            const savedRecord = { ...result.data[0], qr_code_url: qrInfo.finalUrl }
+            setActiveMedDetails(savedRecord)
+          } catch (qrErr) {
+            console.warn('QR Code generation notice for new drug:', qrErr)
+            setActiveMedDetails(result.data[0])
+          }
         }
       }
 
       if (result.error) throw result.error
-      alert("บันทึกข้อมูลสำเร็จแล้ว!")
+      alert("บันทึกข้อมูลและสร้าง QR Code สำเร็จแล้ว!")
       fetchAllSavedDrugs()
     } catch (err) {
       alert("Save Error: " + err.message)
+    }
+  }
+
+  // --- QR Code Distribution Handlers ---
+  const openQrModalForMed = async (med) => {
+    if (!med) return
+    setQrModalMed(med)
+    setShowQrModal(true)
+    setQrCopied(false)
+    setQrRegenSuccess(false)
+    setQrLoading(true)
+
+    try {
+      const leafletUrl = getMedicationLeafletUrl(med.id)
+      let dataUrl = med.qr_code_url
+      if (!dataUrl || !dataUrl.startsWith('data:image')) {
+        dataUrl = await generateQRCodeDataURL(leafletUrl)
+      }
+      const svg = await generateQRCodeSVG(leafletUrl)
+      setQrDataUrl(dataUrl)
+      setQrSvgString(svg)
+    } catch (err) {
+      console.error('Error generating QR preview:', err)
+    } finally {
+      setQrLoading(false)
+    }
+  }
+
+  const openQrModalForCurrentEditor = () => {
+    if (!activeMedId) {
+      alert('กรุณาบันทึกข้อมูลยาก่อนเปิดดูหรือแจกจ่าย QR Code\n(Please save the medication template first to generate its unique QR link)')
+      return
+    }
+    const currentMed = activeMedDetails || {
+      id: activeMedId,
+      med_name: drugName,
+      med_group: drugGroup,
+      med_type: drugType,
+      contents: contents,
+      qr_code_url: activeMedDetails?.qr_code_url
+    }
+    openQrModalForMed(currentMed)
+  }
+
+  const handleRegenerateQR = async () => {
+    if (!qrModalMed) return
+    if (!canEditLabel(currentUser, qrModalMed)) {
+      alert('You do not have permission to regenerate QR codes for this medication.')
+      return
+    }
+
+    setQrLoading(true)
+    setQrRegenSuccess(false)
+    try {
+      const qrInfo = await generateAndDistributeQRCode(qrModalMed.id)
+      setQrDataUrl(qrInfo.dataUrl)
+      setQrSvgString(qrInfo.svgString)
+
+      const { error } = await supabase
+        .from('medication_templates')
+        .update({ qr_code_url: qrInfo.finalUrl })
+        .eq('id', qrModalMed.id)
+
+      if (error) throw error
+
+      const updatedMed = { ...qrModalMed, qr_code_url: qrInfo.finalUrl }
+      setQrModalMed(updatedMed)
+      if (activeMedId === qrModalMed.id) {
+        setActiveMedDetails(updatedMed)
+      }
+      setSavedDrugsList(prev => prev.map(d => d.id === qrModalMed.id ? updatedMed : d))
+      setQrRegenSuccess(true)
+      setTimeout(() => setQrRegenSuccess(false), 3000)
+    } catch (err) {
+      alert('Error regenerating QR Code: ' + err.message)
+    } finally {
+      setQrLoading(false)
+    }
+  }
+
+  const handleCopyQrLink = () => {
+    if (!qrModalMed?.id) return
+    const link = getMedicationLeafletUrl(qrModalMed.id)
+    if (navigator?.clipboard?.writeText) {
+      navigator.clipboard.writeText(link).then(() => {
+        setQrCopied(true)
+        setTimeout(() => setQrCopied(false), 2500)
+      }).catch(() => {
+        prompt('Copy this link:', link)
+      })
+    } else {
+      prompt('Copy this link:', link)
     }
   }
 
@@ -1023,11 +1227,7 @@ function App() {
       {/* --- 1. DASHBOARD VIEW (หลัง Login) --- */}
       {!showLogin && currentView === 'dashboard' && (
         <div className="dashboard-page-container">
-          {/* Blurred Liquid Turquoise Background */}
-          <div className="dashboard-bg-layer" aria-hidden="true">
-            <div className="dashboard-bg-image"></div>
-            <div className="dashboard-bg-overlay"></div>
-          </div>
+          {/* Clean White Background */}
 
           {/* Top Navigation */}
           <header className="dashboard-header">
@@ -1074,7 +1274,114 @@ function App() {
 
           {/* Main Hero Area with Floating White Card */}
           <main className="dashboard-main-content">
-            <div className="dashboard-white-card">
+            {currentUser?.isGuest ? (
+              <div className="guest-hero-container">
+                <div className="guest-hero-card">
+                  {/* Top Badge */}
+                  <div className="guest-hero-badge">
+                    <span className="guest-badge-dot"></span>
+                    <span>Document Management System for Public Medication Information</span>
+                  </div>
+
+                  {/* Main Title */}
+                  <h1 className="guest-main-title">
+                    Patient Information<br />
+                    <span className="guest-leaflet-italic">Leaflet</span>
+                  </h1>
+
+                  {/* Subtitle */}
+                  <p className="guest-main-subtitle">
+                    Browse and explore public medication documents as a read-only guest.
+                  </p>
+
+                  {/* Primary Blue Action Button: Drug Data */}
+                  <button
+                    className="guest-drug-data-btn"
+                    onClick={() => {
+                      setManageMainTab('drug_data')
+                      setManageSubCategory('all_drugs')
+                      setManageSearchQuery('')
+                      setCurrentView('manage_data')
+                      fetchAllSavedDrugs()
+                    }}
+                    title="Drug Data"
+                  >
+                    <div className="guest-drug-data-left">
+                      <div className="guest-drug-data-icon-box">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="3" y="3" width="7" height="7" rx="1.5"></rect>
+                          <rect x="14" y="3" width="7" height="7" rx="1.5"></rect>
+                          <rect x="14" y="14" width="7" height="7" rx="1.5"></rect>
+                          <rect x="3" y="14" width="7" height="7" rx="1.5"></rect>
+                        </svg>
+                      </div>
+                      <div className="guest-drug-data-texts">
+                        <span className="guest-drug-data-title">Drug Data</span>
+                        <span className="guest-drug-data-subtitle">Drug Library · Topics · Footer</span>
+                      </div>
+                    </div>
+                    <div className="guest-drug-data-arrow">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="9 18 15 12 9 6"></polyline>
+                      </svg>
+                    </div>
+                  </button>
+
+                  {/* Quick Access Divider */}
+                  <div className="guest-quick-access-divider">
+                    <span>quick access</span>
+                  </div>
+
+                  {/* Quick Access Sub-buttons */}
+                  <div className="guest-sub-pills-row">
+                    <button
+                      className="guest-sub-pill"
+                      onClick={() => setActiveModal('import_word')}
+                      title="Import (.docx)"
+                    >
+                      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <polyline points="14 2 14 8 20 8"></polyline>
+                      </svg>
+                      <span>Import (.docx)</span>
+                    </button>
+
+                    <button
+                      className="guest-sub-pill"
+                      onClick={() => setActiveModal('join_code')}
+                      title="6-digit Code"
+                    >
+                      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="3" y="3" width="7" height="7" rx="1.5"></rect>
+                        <rect x="14" y="3" width="7" height="7" rx="1.5"></rect>
+                        <rect x="14" y="14" width="7" height="7" rx="1.5"></rect>
+                        <rect x="3" y="14" width="7" height="7" rx="1.5"></rect>
+                      </svg>
+                      <span>6-digit Code</span>
+                    </button>
+                  </div>
+
+                  {/* Card Footer: Supported by PSU */}
+                  <div className="guest-card-footer">
+                    <span className="footer-supported-text">Supported by</span>
+                    <div className="psu-badge">
+                      <svg className="psu-info-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="12" y1="8" x2="12" y2="12"></line>
+                        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                      </svg>
+                      <span className="psu-badge-text">PSU · Prince of Songkla University</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Note below card */}
+                <p className="guest-disclaimer-text">
+                  You are browsing as a guest with read-only access.
+                </p>
+              </div>
+            ) : (
+              <div className="dashboard-white-card">
               {/* Top Badge */}
               <div className="dashboard-hero-badge">
                 <span className="badge-dot"></span>
@@ -1207,7 +1514,8 @@ function App() {
                 </div>
               </div>
             </div>
-          </main>
+          )}
+        </main>
 
           {/* Interactive Modal for secondary features */}
           {activeModal && (
@@ -1299,7 +1607,292 @@ function App() {
 
       {/* --- 2. MANAGE DATA VIEW (Full English UI matching mockup) --- */}
       {!showLogin && currentView === 'manage_data' && (
-        <div className="manage-page-container">
+        currentUser?.isGuest ? (
+          <div className="guest-drug-page">
+
+            {/* Top Navigation Header */}
+            <header className="manage-header">
+              <div className="dashboard-brand">
+                <div className="pil-logo-box">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                    <polyline points="14 2 14 8 20 8"></polyline>
+                    <line x1="12" y1="17" x2="12" y2="11"></line>
+                    <line x1="9" y1="14" x2="15" y2="14"></line>
+                  </svg>
+                </div>
+                <div className="pil-brand-text-col">
+                  <span className="pil-brand-name">PIL System</span>
+                  <span className="pil-brand-subtitle">Patient Information Leaflet</span>
+                </div>
+              </div>
+
+              <div className="dashboard-header-right">
+                {currentUser && (
+                  <div className="dashboard-user-capsule" style={{ borderColor: currentUser.badgeColor }}>
+                    <div className="user-avatar-circle" style={{ background: currentUser.badgeBg, color: currentUser.badgeColor }}>
+                      {renderUserAvatarIcon(currentUser)}
+                    </div>
+                    <div className="user-text-column">
+                      <span className="user-email-text">{currentUser.name}</span>
+                      <span className="user-role-subtext" style={{ color: currentUser.badgeColor }}>
+                        {currentUser.role} (Read-Only)
+                      </span>
+                    </div>
+                  </div>
+                )}
+                <button className="dashboard-logout-btn" onClick={handleLogout} title="Sign Out">
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                    <polyline points="16 17 21 12 16 7"></polyline>
+                    <line x1="21" y1="12" x2="9" y2="12"></line>
+                  </svg>
+                  <span>Sign Out</span>
+                </button>
+              </div>
+            </header>
+
+            {/* Main Content matching Image 2 */}
+            <main className="guest-drug-content">
+              {/* Back Navigation Link */}
+              <button className="guest-back-btn" onClick={() => setCurrentView('dashboard')}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="19" y1="12" x2="5" y2="12"></line>
+                  <polyline points="12 19 5 12 12 5"></polyline>
+                </svg>
+                <span>Back to Dashboard</span>
+              </button>
+
+              {/* Hero Header Section */}
+              <div className="guest-drug-hero">
+                <div className="guest-drug-hero-left">
+                  <div className="guest-section-tag">READ-ONLY ACCESS</div>
+                  <h1 className="guest-drug-title">Drug Data</h1>
+                  <p className="guest-drug-desc">
+                    Browse medication topics available in the PIL document library.
+                  </p>
+                </div>
+                <div className="guest-items-counter">
+                  {(() => {
+                    const isAll = !manageSubCategory || manageSubCategory === 'all_drugs'
+                    const filtered = savedDrugsList.filter(d => {
+                      const q = manageSearchQuery.toLowerCase().trim()
+                      const matchesSearch =
+                        !q ||
+                        (d.med_name || '').toLowerCase().includes(q) ||
+                        (d.med_type || '').toLowerCase().includes(q) ||
+                        (d.med_group || '').toLowerCase().includes(q)
+                      const matchesGroup = isAll || d.med_group === manageSubCategory
+                      return matchesSearch && matchesGroup
+                    })
+                    return `${filtered.length} ${filtered.length === 1 ? 'item' : 'items'}`
+                  })()}
+                </div>
+              </div>
+
+              {/* Category Filter Pills */}
+              {(() => {
+                const categories = Array.from(
+                  new Set([
+                    ...drugGroups,
+                    ...savedDrugsList.map(d => d.med_group).filter(Boolean)
+                  ])
+                )
+                const isAllSelected = !manageSubCategory || manageSubCategory === 'all_drugs'
+
+                return (
+                  <div className="guest-pills-row">
+                    <button
+                      className={`guest-cat-pill ${isAllSelected ? 'active' : ''}`}
+                      onClick={() => {
+                        setManageSubCategory('all_drugs')
+                        setManageSearchQuery('')
+                      }}
+                    >
+                      All Medications
+                    </button>
+                    {categories.map((cat) => {
+                      const isCatActive = manageSubCategory === cat
+                      return (
+                        <button
+                          key={cat}
+                          className={`guest-cat-pill ${isCatActive ? 'active' : ''}`}
+                          onClick={() => {
+                            setManageSubCategory(cat)
+                            setManageSearchQuery('')
+                          }}
+                        >
+                          {cat}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )
+              })()}
+
+              {/* White Medication Panel Card */}
+              <div className="guest-med-panel">
+                {/* Panel Header */}
+                <div className="guest-panel-header">
+                  <div className="guest-panel-left">
+                    <div className="guest-panel-icon-box">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                      </svg>
+                    </div>
+                    <div className="guest-panel-title-group">
+                      <div className="guest-panel-title-row">
+                        <h2 className="guest-panel-title">Medication Library</h2>
+                        <button
+                          className="guest-sync-btn"
+                          onClick={() => fetchAllSavedDrugs()}
+                          title="Sync with Supabase"
+                        >
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="23 4 23 10 17 10"></polyline>
+                            <polyline points="1 20 1 14 7 14"></polyline>
+                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                          </svg>
+                          <span>Sync</span>
+                        </button>
+                      </div>
+                      <p className="guest-panel-desc">
+                        View and manage saved drug templates in the database
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="guest-panel-right">
+                    <div className="guest-search-box">
+                      <svg className="guest-search-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                      </svg>
+                      <input
+                        type="text"
+                        placeholder="Search items..."
+                        className="guest-search-input"
+                        value={manageSearchQuery}
+                        onChange={(e) => setManageSearchQuery(e.target.value)}
+                      />
+                      {manageSearchQuery && (
+                        <button className="guest-search-clear" onClick={() => setManageSearchQuery('')}>✕</button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Medication Items List */}
+                <div className="guest-med-list">
+                  {(() => {
+                    const isAll = !manageSubCategory || manageSubCategory === 'all_drugs'
+                    const filtered = savedDrugsList.filter(d => {
+                      const q = manageSearchQuery.toLowerCase().trim()
+                      const matchesSearch =
+                        !q ||
+                        (d.med_name || '').toLowerCase().includes(q) ||
+                        (d.med_type || '').toLowerCase().includes(q) ||
+                        (d.med_group || '').toLowerCase().includes(q)
+                      const matchesGroup = isAll || d.med_group === manageSubCategory
+                      return matchesSearch && matchesGroup
+                    })
+
+                    if (filtered.length === 0) {
+                      return (
+                        <div className="guest-empty-state">
+                          <p>No medication templates found.</p>
+                        </div>
+                      )
+                    }
+
+                    return filtered.map((drug, index) => {
+                      const initial = (drug.med_name ? drug.med_name.trim().charAt(0).toUpperCase() : 'M')
+                      const avatarBg = getMedAvatarBg(drug.med_name, index)
+                      const ownerName = drug.created_by_name || drug.last_updated_by || 'Hospital Staff'
+
+                      return (
+                        <div key={drug.id} className="guest-med-row">
+                          <div className="guest-med-row-left">
+                            <div className="guest-med-avatar" style={{ backgroundColor: avatarBg }}>
+                              {initial}
+                            </div>
+                            <div className="guest-med-info">
+                              <div className="guest-med-name-row">
+                                <span className="guest-med-name">{drug.med_name}</span>
+                                {ownerName && (
+                                  <span className="guest-creator-pill" title={`Created by ${ownerName}`}>
+                                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                      <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+                                      <circle cx="12" cy="7" r="4" />
+                                    </svg>
+                                    <span>{ownerName}</span>
+                                  </span>
+                                )}
+                              </div>
+                              <div className="guest-med-meta">
+                                {drug.med_type ? `${drug.med_type} · ` : ''}
+                                {drug.med_group ? `${drug.med_group} · ` : ''}
+                                Updated by {drug.last_updated_by || ownerName}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="guest-med-row-right">
+                            <button
+                              className="guest-qr-btn"
+                              onClick={() => openQrModalForMed(drug)}
+                              title="Download QR Code (PNG / SVG)"
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                <rect x="3" y="3" width="7" height="7" rx="1.5" />
+                                <rect x="14" y="3" width="7" height="7" rx="1.5" />
+                                <rect x="14" y="14" width="7" height="7" rx="1.5" />
+                                <rect x="3" y="14" width="7" height="7" rx="1.5" />
+                              </svg>
+                              <span>QR Code</span>
+                            </button>
+                            <button
+                              className="guest-view-btn"
+                              onClick={() => {
+                                selectMedTemplate(drug)
+                                setCurrentView('editor')
+                              }}
+                              title="View Document (Read-Only)"
+                            >
+                              View (Read-Only)
+                            </button>
+                            <span className="guest-locked-badge" title="Editing and deleting are locked for guest users">
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/>
+                                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                              </svg>
+                              <span>Locked</span>
+                            </span>
+                          </div>
+                        </div>
+                      )
+                    })
+                  })()}
+                </div>
+              </div>
+
+              {/* Card Footer: Supported by PSU */}
+              <div className="guest-page-footer">
+                <span className="footer-supported-text">Supported by</span>
+                <div className="psu-badge">
+                  <svg className="psu-info-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="8" x2="12" y2="12"></line>
+                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                  </svg>
+                  <span className="psu-badge-text">PSU · Prince of Songkla University</span>
+                </div>
+              </div>
+            </main>
+          </div>
+        ) : (
+          <div className="manage-page-container">
           {/* Top Navigation Header */}
           <header className="manage-header">
             <div className="dashboard-brand">
@@ -1672,6 +2265,19 @@ function App() {
                           </div>
                           <div className="manage-item-actions">
                             <button
+                              className="manage-qr-btn"
+                              onClick={() => openQrModalForMed(drug)}
+                              title="View, Print & Download QR Code"
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                <rect x="3" y="3" width="7" height="7" rx="1.5" />
+                                <rect x="14" y="3" width="7" height="7" rx="1.5" />
+                                <rect x="14" y="14" width="7" height="7" rx="1.5" />
+                                <rect x="3" y="14" width="7" height="7" rx="1.5" />
+                              </svg>
+                              <span>QR Code</span>
+                            </button>
+                            <button
                               className={`manage-use-btn ${!canEditThis ? 'read-only' : ''}`}
                               onClick={() => { selectMedTemplate(drug); setCurrentView('editor'); }}
                               title={canEditThis ? "Open in Editor" : denialReason?.th}
@@ -1887,6 +2493,7 @@ function App() {
             </div>
           </main>
         </div>
+        )
       )}
 
       {/* --- 3. EDITOR VIEW (หน้ากรอกข้อมูลยาเดิม) --- */}
@@ -1944,6 +2551,19 @@ function App() {
                   title={currentUser?.role === ROLES.GUEST ? 'ผู้เยี่ยมชมไม่สามารถแก้ไขข้อมูลได้' : 'Clear All'}
                 >
                   Clear All
+                </button>
+                <button
+                  className="btn-qr-nav"
+                  onClick={openQrModalForCurrentEditor}
+                  title="View, Print & Download QR Code"
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <rect x="3" y="3" width="7" height="7" rx="1.5" />
+                    <rect x="14" y="3" width="7" height="7" rx="1.5" />
+                    <rect x="14" y="14" width="7" height="7" rx="1.5" />
+                    <rect x="3" y="14" width="7" height="7" rx="1.5" />
+                  </svg>
+                  <span>QR Code</span>
                 </button>
                 <button className="btn-export-nav" onClick={handleExportPDF}>Export PDF</button>
                 <button className="btn-login-nav logout" onClick={handleLogout}>Logout</button>
@@ -2034,6 +2654,188 @@ function App() {
             </div>
           </main>
         </>
+      )}
+
+      {/* Floating Help Button (?) at bottom right */}
+      <button
+        className="floating-help-btn"
+        onClick={() => alert("PIL System - Patient Information Leaflet\nDocument Management System for Public Medication Information\nSupported by PSU · Prince of Songkla University")}
+        title="Help & Support"
+        aria-label="Help & Support"
+      >
+        ?
+      </button>
+
+      {/* --- QR Code Distribution Modal --- */}
+      {showQrModal && qrModalMed && (
+        <div className="qr-modal-overlay" onClick={() => setShowQrModal(false)}>
+          <div className="qr-modal-box" onClick={(e) => e.stopPropagation()}>
+            <div className="qr-modal-header">
+              <div className="qr-modal-title-group">
+                <div className="qr-header-icon-box">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="3" width="7" height="7" rx="1.5" />
+                    <rect x="14" y="3" width="7" height="7" rx="1.5" />
+                    <rect x="14" y="14" width="7" height="7" rx="1.5" />
+                    <rect x="3" y="14" width="7" height="7" rx="1.5" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="qr-modal-title">Medication QR Code</h3>
+                  <p className="qr-modal-subtitle">
+                    {qrModalMed.med_name} {qrModalMed.med_type ? `· ${qrModalMed.med_type}` : ''} {qrModalMed.med_group ? `(${qrModalMed.med_group})` : ''}
+                  </p>
+                </div>
+              </div>
+              <button className="qr-modal-close" onClick={() => setShowQrModal(false)} aria-label="Close">
+                ✕
+              </button>
+            </div>
+
+            <div className="qr-modal-body">
+              {/* QR Preview Card */}
+              <div className="qr-preview-card">
+                <div className="qr-image-wrapper">
+                  {qrLoading ? (
+                    <div className="qr-loading-spinner-box">
+                      <div className="qr-spinner"></div>
+                      <span>Generating QR Code...</span>
+                    </div>
+                  ) : qrDataUrl ? (
+                    <img src={qrDataUrl} alt={`QR Code for ${qrModalMed.med_name}`} className="qr-preview-image" />
+                  ) : (
+                    <div className="qr-placeholder">No QR Code Available</div>
+                  )}
+                </div>
+                <div className="qr-scan-badge">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 18h.01" />
+                    <path d="M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z" />
+                  </svg>
+                  <span>Scan to open Patient Information Leaflet (PIL)</span>
+                </div>
+              </div>
+
+              {/* Deep Link URL Box */}
+              <div className="qr-url-card">
+                <label className="qr-url-label">Public Access URL (Direct Leaflet Link)</label>
+                <div className="qr-url-row">
+                  <input
+                    type="text"
+                    readOnly
+                    value={getMedicationLeafletUrl(qrModalMed.id)}
+                    className="qr-url-input"
+                  />
+                  <button
+                    className={`qr-btn-copy ${qrCopied ? 'copied' : ''}`}
+                    onClick={handleCopyQrLink}
+                  >
+                    {qrCopied ? (
+                      <>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                        <span>Copied!</span>
+                      </>
+                    ) : (
+                      <>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                        </svg>
+                        <span>Copy Link</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Action Buttons Grid */}
+              <div className="qr-actions-section">
+                <div className="qr-actions-label">Download & Export Options</div>
+                <div className="qr-actions-grid">
+                  {/* PNG Download */}
+                  <button
+                    className="qr-action-btn primary"
+                    onClick={() => downloadQRCodeFile(qrDataUrl, `${qrModalMed.med_name}_QR`, 'png')}
+                    disabled={!qrDataUrl || qrLoading}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                      <polyline points="7 10 12 15 17 10" />
+                      <line x1="12" y1="15" x2="12" y2="3" />
+                    </svg>
+                    <span>Download PNG (High-Res)</span>
+                  </button>
+
+                  {/* SVG Download */}
+                  <button
+                    className="qr-action-btn secondary"
+                    onClick={() => downloadQRCodeFile(qrSvgString, `${qrModalMed.med_name}_QR`, 'svg')}
+                    disabled={!qrSvgString || qrLoading}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="16 18 22 12 16 6" />
+                      <polyline points="8 6 2 12 8 18" />
+                    </svg>
+                    <span>Download SVG (Vector)</span>
+                  </button>
+
+                  {/* Packaging Sticker Print (Admin, Pharmacist, Staff) */}
+                  {currentUser && !currentUser.isGuest && (
+                    <button
+                      className="qr-action-btn print"
+                      onClick={() => printPackagingSticker(qrModalMed, qrDataUrl)}
+                      disabled={!qrDataUrl || qrLoading}
+                      title="Print standard 80x52mm packaging sticker"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="6 9 6 2 18 2 18 9" />
+                        <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+                        <rect x="6" y="14" width="12" height="8" />
+                      </svg>
+                      <span>Print Packaging Sticker</span>
+                    </button>
+                  )}
+
+                  {/* Regenerate QR Code (Authorized users only) */}
+                  {currentUser && !currentUser.isGuest && canEditLabel(currentUser, qrModalMed) && (
+                    <button
+                      className="qr-action-btn regen"
+                      onClick={handleRegenerateQR}
+                      disabled={qrLoading}
+                      title="Regenerate QR Code and re-upload to Supabase"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className={qrLoading ? 'spin-icon' : ''}>
+                        <polyline points="23 4 23 10 17 10" />
+                        <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+                      </svg>
+                      <span>{qrLoading ? 'Regenerating...' : 'Regenerate QR Code'}</span>
+                    </button>
+                  )}
+                </div>
+
+                {qrRegenSuccess && (
+                  <div className="qr-success-banner">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                      <polyline points="22 4 12 14.01 9 11.01" />
+                    </svg>
+                    <span>QR Code regenerated and saved to database successfully!</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="qr-modal-footer-note">
+                {currentUser?.isGuest ? (
+                  <span>Guest Visitor Mode · Read-Only Access · Direct Leaflet Scanning Enabled</span>
+                ) : (
+                  <span>Ready for packaging distribution · Formatted for clinical pharmaceutical label stickers</span>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
