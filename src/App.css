@@ -2520,6 +2520,17 @@ body,
   border-color: #7dd3fc;
 }
 
+.qr-action-btn.view-scan {
+  background: #f0fdf4;
+  color: #15803d;
+  border-color: #bbf7d0;
+}
+
+.qr-action-btn.view-scan:hover:not(:disabled) {
+  background: #dcfce7;
+  border-color: #86efac;
+}
+
 .qr-success-banner {
   background: #ecfdf5;
   border: 1px solid #a7f3d0;
