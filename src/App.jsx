@@ -107,6 +107,30 @@ const TOPIC_CATEGORIES = [
   { id: 'topic7', label: '7. Appearance & Ingredients' }
 ]
 
+const TOPIC_SUB_OPTIONS = {
+  topic1: [
+    { value: '111', label: '111 - ข้อมูลระบุตัวยา/กลุ่มยา' },
+    { value: '112', label: '112 - กลุ่มยาต้านอักเสบ' },
+    { value: '12', label: '12 - ข้อบ่งใช้/สรรพคุณ' }
+  ],
+  topic2: [
+    { value: '21', label: '21 - ข้อห้ามใช้เด็ดขาด' },
+    { value: '22', label: '22 - ข้อควรระวังก่อนใช้ยา' }
+  ],
+  topic3: [
+    { value: '31', label: '31 - วิธีรับประทาน/ขนาดยา' },
+    { value: '32', label: '32 - กรณีลืมรับประทานยา' },
+    { value: '33', label: '33 - สังเกตอาการผิดปกติรุนแรง' }
+  ],
+  topic4: [], // ไม่มี sub_topic
+  topic5: [
+    { value: '51', label: '51 - ผลข้างเคียงรุนแรงที่ต้องพบแพทย์ทันที' },
+    { value: '52', label: '52 - ผลข้างเคียงทั่วไปที่ไม่รุนแรง' }
+  ],
+  topic6: [], // ไม่มี sub_topic
+  topic7: []  // ไม่มี sub_topic
+}
+
 const CATEGORY_META = {
   footer_statements: {
     title: 'Footer Statements',
@@ -263,6 +287,7 @@ function App() {
   // --- Manage Data State ---
   const [manageMainTab, setManageMainTab] = useState('topics') // 'topics' | 'footer' | 'drug_data'
   const [manageSubCategory, setManageSubCategory] = useState('topic1')
+  const [selectedSubTopic, setSelectedSubTopic] = useState('')
   const [manageSearchQuery, setManageSearchQuery] = useState('')
   const [manageNewItemInput, setManageNewItemInput] = useState('')
   const [manageEditingId, setManageEditingId] = useState(null)
@@ -653,8 +678,8 @@ function App() {
   }
 
   const handleSaveTopicEdit = async (topicTable, id, newName) => {
-    if (!canManageSystemTopics(currentUser)) {
-      alert('Access Denied (สิทธิ์ไม่เพียงพอ):\nเฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่สามารถแก้ไขหัวข้อมาตรฐานของระบบได้')
+    if (currentUser?.isGuest) {
+      alert('Access Denied (สิทธิ์ไม่เพียงพอ):\nผู้เยี่ยมชม (Guest) ไม่สามารถแก้ไขข้อมูลได้')
       return
     }
     if (!newName.trim()) {
@@ -691,38 +716,90 @@ function App() {
   }
 
   const handleAddTopicItem = async (topicTable, name) => {
-    if (!canManageSystemTopics(currentUser)) {
-      alert('Access Denied (สิทธิ์ไม่เพียงพอ):\nเฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่สามารถเพิ่มหัวข้อมาตรฐานของระบบได้')
+    if (currentUser?.isGuest) {
+      alert('Access Denied (สิทธิ์ไม่เพียงพอ):\nผู้เยี่ยมชม (Guest) ไม่สามารถเพิ่มข้อมูลได้')
       return
     }
-    if (!name.trim()) return
+
+    const inputValue = (name !== undefined ? name : manageNewItemInput || '').trim()
+    if (!inputValue) {
+      alert('กรุณากรอกข้อความก่อนกดเพิ่มข้อมูล (Please enter text before adding)')
+      return
+    }
+
+    let currentTopicTable = topicTable || manageSubCategory || 'topic1'
+    if (typeof currentTopicTable === 'number' || /^[1-7]$/.test(String(currentTopicTable))) {
+      currentTopicTable = `topic${currentTopicTable}`
+    } else if (!String(currentTopicTable).startsWith('topic')) {
+      currentTopicTable = 'topic1'
+    }
+
     setIsLoadingTopic(true)
     try {
-      const { data, error } = await supabase
-        .from(topicTable)
-        .insert([{ name: name.trim() }])
+      const currentOptions = TOPIC_SUB_OPTIONS[currentTopicTable] || []
+      const subTopicValue = currentOptions.length > 0 ? (selectedSubTopic || currentOptions[0].value) : null
+
+      const payload = {
+        name: inputValue,
+        sub_topic: subTopicValue
+      }
+
+      let insertedRow = null
+      const { data, error: insertError } = await supabase
+        .from(currentTopicTable)
+        .insert([payload])
         .select()
 
-      if (error) throw error
+      if (insertError) {
+        // Fallback กรณีตารางนั้นไม่มีคอลัมน์ sub_topic ใน Supabase
+        if (insertError.message?.toLowerCase().includes('sub_topic') || insertError.code === '42703') {
+          const { data: fallbackData, error: fallbackError } = await supabase
+            .from(currentTopicTable)
+            .insert([{ name: inputValue }])
+            .select()
+          if (fallbackError) throw fallbackError
+          if (fallbackData && fallbackData.length > 0) insertedRow = fallbackData[0]
+        } else {
+          throw insertError
+        }
+      } else if (data && data.length > 0) {
+        insertedRow = data[0]
+      }
 
-      if (data && data.length > 0) {
+      // ล้างช่องกรอกข้อความ
+      setManageNewItemInput('')
+
+      // อัปเดตข้อมูลเข้า UI ทันที
+      if (insertedRow) {
         setSupabaseTopicsData(prev => ({
           ...prev,
-          [topicTable]: [...(prev[topicTable] || []), data[0]]
+          [currentTopicTable]: [...(prev[currentTopicTable] || []), insertedRow]
         }))
-        setManageNewItemInput('')
+      }
+
+      // ดึงข้อมูลล่าสุดยืนยันกับ Supabase
+      const { data: refreshedData } = await supabase
+        .from(currentTopicTable)
+        .select('*')
+        .order('id', { ascending: true })
+
+      if (refreshedData) {
+        setSupabaseTopicsData(prev => ({
+          ...prev,
+          [currentTopicTable]: refreshedData
+        }))
       }
     } catch (err) {
-      console.error('Insert error:', err)
-      alert('Failed to add item to database: ' + err.message)
+      console.error(`Failed to add item to ${currentTopicTable}:`, err)
+      alert(`ไม่สามารถบันทึกข้อมูลลงตาราง ${currentTopicTable} ได้:\n${err.message || err}`)
     } finally {
       setIsLoadingTopic(false)
     }
   }
 
   const handleDeleteTopicItem = async (topicTable, id, name) => {
-    if (!canManageSystemTopics(currentUser)) {
-      alert('Access Denied (สิทธิ์ไม่เพียงพอ):\nเฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่สามารถลบหัวข้อมาตรฐานของระบบได้')
+    if (currentUser?.isGuest) {
+      alert('Access Denied (สิทธิ์ไม่เพียงพอ):\nผู้เยี่ยมชม (Guest) ไม่สามารถลบข้อมูลได้')
       return
     }
     if (!window.confirm(`Are you sure you want to delete this item from ${topicTable}?\n"${name.slice(0, 80)}${name.length > 80 ? '...' : ''}"`)) return
@@ -755,6 +832,13 @@ function App() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentView, manageMainTab, manageSubCategory])
+
+  useEffect(() => {
+    if (manageMainTab === 'topics') {
+      const options = TOPIC_SUB_OPTIONS[manageSubCategory] || []
+      setSelectedSubTopic(options.length > 0 ? options[0].value : '')
+    }
+  }, [manageSubCategory, manageMainTab])
 
   // Initial load of drug templates on mount so search and counts are immediately ready
   useEffect(() => {
@@ -2249,14 +2333,29 @@ function App() {
               {manageMainTab !== 'drug_data' && (
                 canManageSystemTopics(currentUser) ? (
                   <div className="manage-add-row">
+                    {manageMainTab === 'topics' && (TOPIC_SUB_OPTIONS[manageSubCategory]?.length > 0) && (
+                      <select
+                        className="manage-subtopic-select"
+                        value={selectedSubTopic}
+                        onChange={(e) => setSelectedSubTopic(e.target.value)}
+                        disabled={isLoadingTopic}
+                        title="เลือกรหัสหัวข้อย่อย (Sub Topic)"
+                      >
+                        {TOPIC_SUB_OPTIONS[manageSubCategory].map(opt => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                    )}
                     <input
                       type="text"
                       placeholder={`Add "${CATEGORY_META[manageSubCategory]?.placeholder || 'new entry'}"...`}
                       className="manage-add-field"
                       value={manageNewItemInput}
                       onChange={(e) => setManageNewItemInput(e.target.value)}
+                      disabled={manageMainTab === 'topics' && isLoadingTopic}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') {
+                          e.preventDefault()
                           if (manageMainTab === 'topics') {
                             handleAddTopicItem(manageSubCategory, manageNewItemInput)
                           } else {
@@ -2266,8 +2365,11 @@ function App() {
                       }}
                     />
                     <button
+                      type="button"
                       className="manage-add-btn"
-                      onClick={() => {
+                      disabled={manageMainTab === 'topics' && isLoadingTopic}
+                      onClick={(e) => {
+                        e.preventDefault()
                         if (manageMainTab === 'topics') {
                           handleAddTopicItem(manageSubCategory, manageNewItemInput)
                         } else {
@@ -2275,11 +2377,21 @@ function App() {
                         }
                       }}
                     >
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <line x1="12" y1="5" x2="12" y2="19"></line>
-                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                      <svg className={(manageMainTab === 'topics' && isLoadingTopic) ? 'rotating' : ''} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        {manageMainTab === 'topics' && isLoadingTopic ? (
+                          <>
+                            <polyline points="23 4 23 10 17 10"></polyline>
+                            <polyline points="1 20 1 14 7 14"></polyline>
+                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                          </>
+                        ) : (
+                          <>
+                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                          </>
+                        )}
                       </svg>
-                      <span>Add Item</span>
+                      <span>{(manageMainTab === 'topics' && isLoadingTopic) ? 'Adding...' : 'Add Item'}</span>
                     </button>
                   </div>
                 ) : (
@@ -2448,7 +2560,14 @@ function App() {
                               disabled={topicSaveStatus?.id === item.id && topicSaveStatus?.status === 'saving'}
                             />
                           ) : (
-                            <span className="manage-item-title">{item.name}</span>
+                            <div className="manage-item-content-group">
+                              <span className="manage-item-title">{item.name}</span>
+                              {item.sub_topic && (
+                                <span className="manage-subtopic-badge">
+                                  {item.sub_topic}
+                                </span>
+                              )}
+                            </div>
                           )}
                         </div>
 

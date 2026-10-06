@@ -84,11 +84,13 @@ export function canAccessMedicineCategory(user, categoryName) {
 
 /**
  * Check if the user can manage system-level PIL data (Topics 1-7, Footers).
- * System topics are global clinical reference standards managed exclusively by Admin.
+ * Allows authenticated clinical staff and admins; Supabase RLS enforces granular policies.
+ * Guests remain strictly read-only.
  */
 export function canManageSystemTopics(user) {
   if (!user) return false
-  return user.role === ROLES.ADMIN
+  if (user.isGuest || user.role === ROLES.GUEST) return false
+  return true
 }
 
 /**
