@@ -3168,15 +3168,17 @@ function App() {
         </>
       )}
 
-      {/* Floating Help Button (?) at bottom right */}
-      <button
-        className="floating-help-btn"
-        onClick={handleOpenHelpTour}
-        title="แนะนำการใช้งานระบบ (Guided Tour)"
-        aria-label="Help & Guided Tour"
-      >
-        ?
-      </button>
+      {/* Floating Help Button (?) at bottom right (only visible when logged in / inside app) */}
+      {!showLogin && (
+        <button
+          className="floating-help-btn"
+          onClick={handleOpenHelpTour}
+          title="Help & Guided Tour"
+          aria-label="Help & Guided Tour"
+        >
+          ?
+        </button>
+      )}
 
       {/* Guided Tour Modal */}
       {showTour && (
