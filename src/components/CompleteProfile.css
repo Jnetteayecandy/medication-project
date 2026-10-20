@@ -45,16 +45,21 @@
   padding: 18px 36px;
   background: rgba(255, 255, 255, 0.85);
   backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   border-bottom: 1px solid rgba(226, 232, 240, 0.8);
   position: sticky;
   top: 0;
   z-index: 50;
+  box-sizing: border-box;
+  width: 100%;
 }
 
 .setup-header-left {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
+  flex-shrink: 0;
 }
 
 .setup-header-logo-box {
@@ -67,11 +72,13 @@
   align-items: center;
   justify-content: center;
   box-shadow: 0 4px 10px rgba(37, 99, 235, 0.2);
+  flex-shrink: 0;
 }
 
 .setup-header-brand-col {
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
 .setup-header-brand-name {
@@ -79,22 +86,27 @@
   font-weight: 700;
   color: #0f172a;
   line-height: 1.15;
+  white-space: nowrap;
 }
 
 .setup-header-brand-sub {
   font-size: 11.5px;
   color: #64748b;
   margin-top: 1px;
+  white-space: nowrap;
 }
 
 .setup-header-right {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
+  flex-shrink: 1;
 }
 
 .setup-user-menu-wrapper {
   position: relative;
+  min-width: 0;
 }
 
 .setup-user-capsule {
@@ -110,6 +122,9 @@
   transition: all 0.15s ease;
   font-family: inherit;
   text-align: left;
+  max-width: 260px;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .setup-user-capsule:hover {
@@ -206,24 +221,32 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
 
 .setup-text-column {
   display: flex;
   flex-direction: column;
   line-height: 1.15;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .setup-email-text {
   font-size: 12.5px;
   font-weight: 600;
   color: #1e293b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 170px;
 }
 
 .setup-role-subtext {
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.5px;
+  white-space: nowrap;
 }
 
 .setup-logout-btn {
@@ -615,25 +638,143 @@
 /* Responsive adjustments */
 @media (max-width: 680px) {
   .setup-top-header {
-    padding: 14px 18px;
+    padding: 12px 14px;
+    gap: 8px;
   }
+
+  .setup-header-left {
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .setup-header-logo-box {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+  }
+
+  .setup-header-brand-name {
+    font-size: 14.5px;
+  }
+
+  .setup-header-brand-sub {
+    display: none; /* Hide secondary subtitle on mobile to give space to user capsule */
+  }
+
+  .setup-header-right {
+    gap: 8px;
+  }
+
+  .setup-user-capsule {
+    max-width: 168px;
+    padding: 3px 8px 3px 6px;
+    gap: 6px;
+  }
+
+  .setup-avatar-circle {
+    width: 24px;
+    height: 24px;
+  }
+
+  .setup-avatar-circle svg {
+    width: 13px;
+    height: 13px;
+  }
+
+  .setup-email-text {
+    font-size: 11.5px;
+    max-width: 95px;
+  }
+
+  .setup-role-subtext {
+    font-size: 9px;
+  }
+
+  .setup-main-container {
+    margin: 18px auto 0;
+    padding: 0 14px 70px;
+  }
+
+  .setup-main-title {
+    font-size: 24px;
+    margin-bottom: 4px;
+  }
+
+  .setup-main-subtitle {
+    font-size: 13.5px;
+    margin-bottom: 16px;
+  }
+
+  .setup-alert-banner {
+    padding: 12px 14px;
+    gap: 10px;
+    border-radius: 14px;
+    margin-bottom: 18px;
+  }
+
+  .setup-alert-title {
+    font-size: 13.5px;
+  }
+
+  .setup-alert-desc {
+    font-size: 12px;
+  }
+
   .setup-card {
-    padding: 22px 18px;
+    padding: 20px 14px;
     border-radius: 18px;
   }
+
+  .setup-user-preview {
+    gap: 12px;
+    padding-bottom: 18px;
+    margin-bottom: 18px;
+  }
+
+  .setup-avatar-box {
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
+    font-size: 18px;
+  }
+
+  .setup-user-username {
+    font-size: 16px;
+  }
+
   .setup-field-row {
     grid-template-columns: 1fr;
     gap: 14px;
   }
+
   .setup-card-bottom {
     flex-direction: column;
     align-items: stretch;
+    gap: 14px;
   }
+
   .setup-save-btn {
     justify-content: center;
     width: 100%;
   }
-  .setup-main-title {
-    font-size: 26px;
+
+  .setup-dropdown-menu {
+    right: 0;
+    max-width: calc(100vw - 28px);
+    width: 230px;
+  }
+}
+
+@media (max-width: 380px) {
+  .setup-top-header {
+    padding: 10px 10px;
+  }
+
+  .setup-user-capsule {
+    max-width: 138px;
+  }
+
+  .setup-email-text {
+    max-width: 70px;
   }
 }

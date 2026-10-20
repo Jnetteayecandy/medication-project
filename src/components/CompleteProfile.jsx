@@ -151,7 +151,7 @@ export default function CompleteProfile({ currentUser, onProfileCompleted, onLog
                 </svg>
               </div>
               <div className="setup-text-column">
-                <span className="setup-email-text">{displayEmail}</span>
+                <span className="setup-email-text" title={displayEmail}>{displayEmail}</span>
                 <span className="setup-role-subtext" style={{ color: currentUser?.badgeColor || '#2563eb' }}>
                   {currentUser?.role || 'STAFF'}
                 </span>
@@ -165,7 +165,7 @@ export default function CompleteProfile({ currentUser, onProfileCompleted, onLog
                 strokeWidth="2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                style={{ transform: showDropdown ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s', marginLeft: '2px' }}
+                style={{ transform: showDropdown ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s', marginLeft: '2px', flexShrink: 0 }}
               >
                 <polyline points="6 9 12 15 18 9"></polyline>
               </svg>
