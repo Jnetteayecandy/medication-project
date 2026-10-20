@@ -924,11 +924,15 @@ body:has(.dedicated-pdf-page) {
 .dashboard-page-container {
   position: relative;
   width: 100vw;
+  max-width: 100%;
   height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   overflow-y: auto;
   overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
   background-color: #ffffff;
   color: #0f172a;
   box-sizing: border-box;
@@ -1013,6 +1017,14 @@ body:has(.dedicated-pdf-page) {
   border-radius: 9999px;
   border: 1px solid #dbeafe;
   box-shadow: 0 2px 6px rgba(37, 99, 235, 0.04);
+  min-width: 0;
+}
+
+.user-text-column {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .user-avatar-circle {
@@ -1475,29 +1487,280 @@ body:has(.dedicated-pdf-page) {
   to { opacity: 1; transform: scale(1); }
 }
 
-/* --- Responsive Adjustments --- */
+/* --- Responsive Adjustments for Dashboard & Headers --- */
 @media (max-width: 768px) {
-  .dashboard-header {
-    padding: 16px 20px;
+  .dashboard-header,
+  .manage-header {
+    padding: 12px 16px;
+    gap: 10px;
+    box-sizing: border-box;
+    width: 100%;
+    position: sticky;
+    top: 0;
+    z-index: 50;
   }
+
+  .dashboard-brand {
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .pil-logo-box {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+  }
+
+  .pil-brand-name {
+    font-size: 15px;
+    line-height: 1.15;
+  }
+
+  .pil-brand-subtitle {
+    display: none !important; /* Hide secondary subtitle on mobile to give space to user info */
+  }
+
+  .dashboard-header-right {
+    gap: 8px;
+    min-width: 0;
+    flex-shrink: 1;
+    justify-content: flex-end;
+  }
+
+  .dashboard-user-capsule {
+    max-width: 175px;
+    min-width: 0;
+    padding: 3px 8px 3px 6px;
+    gap: 6px;
+    flex-shrink: 1;
+  }
+
+  .user-avatar-circle {
+    width: 26px;
+    height: 26px;
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+
+  .user-avatar-circle svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .user-text-column {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow: hidden;
+    flex: 1;
+  }
+
+  .user-email-text {
+    font-size: 11.5px;
+    font-weight: 600;
+    max-width: 105px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: block;
+  }
+
+  .user-role-subtext {
+    font-size: 9px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: block;
+  }
+
+  .dashboard-logout-btn {
+    padding: 0;
+    width: 34px;
+    height: 34px;
+    min-width: 34px;
+    border-radius: 50%;
+    justify-content: center;
+    align-items: center;
+    flex-shrink: 0;
+    gap: 0;
+  }
+
+  .dashboard-logout-text {
+    display: none !important; /* Hide "Sign Out" text on mobile, keeping clean icon button */
+  }
+
+  .dashboard-main-content {
+    padding: 16px 14px 44px;
+    align-items: flex-start;
+  }
+
   .dashboard-white-card {
-    padding: 28px 20px 24px;
+    padding: 24px 18px 22px;
     border-radius: 20px;
+    box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.04);
   }
+
+  .dashboard-hero-badge {
+    max-width: 100%;
+    box-sizing: border-box;
+    white-space: normal;
+    text-align: center;
+    font-size: 11px;
+    padding: 6px 14px;
+    line-height: 1.35;
+    margin-bottom: 16px;
+  }
+
   .dashboard-cards-grid {
     grid-template-columns: 1fr;
-    gap: 14px;
+    gap: 12px;
+    margin-bottom: 14px;
   }
+
+  .action-card {
+    padding: 14px 16px;
+    border-radius: 14px;
+  }
+
+  .card-icon-box {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    border-radius: 10px;
+  }
+
+  .card-title {
+    font-size: 15px;
+  }
+
+  .card-subtitle {
+    font-size: 12.5px;
+  }
+
   .dashboard-pills-row {
     grid-template-columns: 1fr;
-    gap: 12px;
+    gap: 10px;
   }
+
+  .dashboard-sub-pill {
+    padding: 11px 14px;
+    font-size: 13px;
+    border-radius: 12px;
+  }
+
   .dashboard-main-title {
-    font-size: 28px;
+    font-size: 26px;
+    margin-bottom: 6px;
   }
+
   .dashboard-main-subtitle {
+    font-size: 13.5px;
+    margin-bottom: 20px;
+    line-height: 1.45;
+  }
+
+  /* Editor Navigation on Mobile */
+  .main-top-nav {
+    padding: 8px 12px;
+    height: auto;
+    min-height: 54px;
+  }
+
+  .nav-container {
+    padding: 0;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .nav-center-area {
+    display: none;
+  }
+
+  .nav-left-area {
+    gap: 8px;
+    flex: auto;
+  }
+
+  .auth-editor-badge {
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 11px;
+    padding: 3px 8px;
+  }
+
+  .nav-right-area {
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 480px) {
+  .dashboard-header,
+  .manage-header {
+    padding: 10px 12px;
+    gap: 6px;
+  }
+
+  .dashboard-user-capsule {
+    max-width: 145px;
+    padding: 3px 6px 3px 5px;
+  }
+
+  .user-email-text {
+    max-width: 80px;
+  }
+
+  .dashboard-white-card {
+    padding: 20px 14px 18px;
+    border-radius: 18px;
+  }
+
+  .dashboard-hero-badge {
+    font-size: 10.5px;
+    padding: 5px 12px;
+  }
+
+  .dashboard-main-title {
+    font-size: 23px;
+  }
+
+  .dashboard-main-subtitle {
+    font-size: 13px;
+    margin-bottom: 18px;
+  }
+}
+
+@media (max-width: 380px) {
+  .dashboard-header,
+  .manage-header {
+    padding: 10px 8px;
+    gap: 4px;
+  }
+
+  .pil-brand-name {
     font-size: 14px;
-    margin-bottom: 24px;
+  }
+
+  .dashboard-user-capsule {
+    max-width: 125px;
+    padding: 2px 6px 2px 4px;
+  }
+
+  .user-email-text {
+    max-width: 65px;
+    font-size: 11px;
+  }
+
+  .dashboard-main-content {
+    padding: 12px 10px 36px;
+  }
+
+  .dashboard-white-card {
+    padding: 18px 12px 16px;
+    border-radius: 16px;
   }
 }
 
@@ -2085,11 +2348,8 @@ body:has(.dedicated-pdf-page) {
 
 /* Responsive Adjustments for Manage Data */
 @media (max-width: 768px) {
-  .manage-header {
-    padding: 16px 20px;
-  }
   .manage-main-content {
-    padding: 20px 16px 40px;
+    padding: 16px 14px 40px;
   }
   .manage-hero-section {
     flex-direction: column;

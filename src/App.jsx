@@ -1731,7 +1731,7 @@ function App() {
                     {renderUserAvatarIcon(currentUser)}
                   </div>
                   <div className="user-text-column">
-                    <span className="user-email-text">{currentUser.name}</span>
+                    <span className="user-email-text" title={currentUser.name}>{currentUser.name}</span>
                     <span className="user-role-subtext" style={{ color: currentUser.badgeColor }}>
                       {currentUser.role} {currentUser.isGuest ? '(Read-Only)' : ''}
                     </span>
@@ -1744,7 +1744,7 @@ function App() {
                   <polyline points="16 17 21 12 16 7"></polyline>
                   <line x1="21" y1="12" x2="9" y2="12"></line>
                 </svg>
-                <span>Sign Out</span>
+                <span className="dashboard-logout-text">Sign Out</span>
               </button>
             </div>
           </header>
@@ -2111,7 +2111,7 @@ function App() {
                       {renderUserAvatarIcon(currentUser)}
                     </div>
                     <div className="user-text-column">
-                      <span className="user-email-text">{currentUser.name}</span>
+                      <span className="user-email-text" title={currentUser.name}>{currentUser.name}</span>
                       <span className="user-role-subtext" style={{ color: currentUser.badgeColor }}>
                         {currentUser.role} (Read-Only)
                       </span>
@@ -2124,7 +2124,7 @@ function App() {
                     <polyline points="16 17 21 12 16 7"></polyline>
                     <line x1="21" y1="12" x2="9" y2="12"></line>
                   </svg>
-                  <span>Sign Out</span>
+                  <span className="dashboard-logout-text">Sign Out</span>
                 </button>
               </div>
             </header>
@@ -2394,7 +2394,7 @@ function App() {
                     {renderUserAvatarIcon(currentUser)}
                   </div>
                   <div className="user-text-column">
-                    <span className="user-email-text">{currentUser.name}</span>
+                    <span className="user-email-text" title={currentUser.name}>{currentUser.name}</span>
                     <span className="user-role-subtext" style={{ color: currentUser.badgeColor }}>
                       {currentUser.role} {currentUser.isGuest ? '(Read-Only)' : ''}
                     </span>
@@ -2407,7 +2407,7 @@ function App() {
                   <polyline points="16 17 21 12 16 7"></polyline>
                   <line x1="21" y1="12" x2="9" y2="12"></line>
                 </svg>
-                <span>Sign Out</span>
+                <span className="dashboard-logout-text">Sign Out</span>
               </button>
             </div>
           </header>

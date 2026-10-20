@@ -710,3 +710,101 @@
   transform: scale(1.06) !important;
 }
 
+/* --- Mobile Responsiveness for Guest Views --- */
+@media (max-width: 768px) {
+  .guest-hero-container {
+    width: 100% !important;
+    padding: 0 !important;
+  }
+
+  .guest-hero-card {
+    padding: 24px 18px 22px !important;
+    border-radius: 20px !important;
+    box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.04) !important;
+  }
+
+  .guest-hero-badge {
+    font-size: 11px !important;
+    padding: 6px 12px !important;
+    white-space: normal !important;
+    line-height: 1.35 !important;
+    margin-bottom: 16px !important;
+  }
+
+  .guest-main-title {
+    font-size: 26px !important;
+    margin-bottom: 8px !important;
+  }
+
+  .guest-leaflet-italic {
+    font-size: 30px !important;
+  }
+
+  .guest-main-subtitle {
+    font-size: 13.5px !important;
+    margin: 0 auto 20px !important;
+    line-height: 1.45 !important;
+  }
+
+  .guest-drug-data-btn {
+    padding: 14px 16px !important;
+    border-radius: 16px !important;
+  }
+
+  .guest-sub-pills-row {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+    margin-bottom: 18px !important;
+  }
+
+  .guest-sub-pill {
+    padding: 11px 14px !important;
+    font-size: 13px !important;
+  }
+
+  .guest-drug-content {
+    padding: 16px 14px 40px !important;
+  }
+
+  .guest-drug-panel {
+    border-radius: 18px !important;
+  }
+
+  .guest-panel-top {
+    padding: 16px !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 12px !important;
+  }
+
+  .guest-search-box {
+    width: 100% !important;
+  }
+
+  .guest-med-row {
+    padding: 14px 16px !important;
+    flex-wrap: wrap !important;
+    gap: 12px !important;
+  }
+
+  .guest-med-row-right {
+    width: 100% !important;
+    justify-content: flex-end !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .guest-hero-card {
+    padding: 20px 14px 18px !important;
+    border-radius: 18px !important;
+  }
+
+  .guest-main-title {
+    font-size: 23px !important;
+  }
+
+  .guest-leaflet-italic {
+    font-size: 26px !important;
+  }
+}
+
