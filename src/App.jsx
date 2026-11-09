@@ -31,6 +31,7 @@ import CompleteProfile from './components/CompleteProfile'
 import GuidedTour from './components/GuidedTour'
 import UserActivityPanel from './components/UserActivityPanel'
 import ImportDocumentModal from './components/ImportDocumentModal'
+import AiGenerateModal from './components/AiGenerateModal'
 import { logActivity } from './utils/activityLogger'
 import { saveMedication, deleteMedication, withTimeout } from './utils/medicationStore'
 
@@ -355,6 +356,8 @@ function App() {
   const [activeMedDetails, setActiveMedDetails] = useState(null) // เก็บ Object ข้อมูลยาที่กำลังแก้ไขสำหรับตรวจ Ownership
   const [isSaving, setIsSaving] = useState(false)
   const [editorReturnView, setEditorReturnView] = useState(null) // view to return to from the editor
+  const [aiGenerated, setAiGenerated] = useState(false) // editor content came from the AI generator
+  const [approvalChecked, setApprovalChecked] = useState(false) // "I reviewed and approve this PIL"
   const [drugGroup, setDrugGroup] = useState('')
   const [drugGroups, setDrugGroups] = useState([])
   const [drugName, setDrugName] = useState('')
@@ -631,6 +634,8 @@ function App() {
     setContents(med.contents || Array(8).fill(''))
     setMedSuggestions([])
     setShowMedSuggestions(false)
+    setAiGenerated(false)
+    setApprovalChecked(false)
   }
 
   // --- 5. Auth Handlers ---
@@ -781,6 +786,12 @@ function App() {
     selectMedTemplate(med)
     setEditorReturnView(currentView)
     setCurrentView('editor')
+  }
+
+  // Fill the editor with an AI-generated draft (must be approved before saving)
+  const handleAiDraft = (draft) => {
+    handleImportedDocument(draft)
+    setAiGenerated(true)
   }
 
   // Fill the editor with text imported from an image / PDF / Word file
@@ -1141,6 +1152,8 @@ function App() {
     setContents(Array(8).fill(''));
     setActiveMedId(null);
     setActiveMedDetails(null);
+    setAiGenerated(false);
+    setApprovalChecked(false);
     if (drugGroups.length > 0) setDrugGroup(drugGroups[0]);
   };
 
@@ -1148,6 +1161,9 @@ function App() {
   const handleSaveTemplate = async () => {
     if (isSaving) return
     if (!drugName) return alert("Please enter a medication name before saving.")
+    if (!approvalChecked) {
+      return alert('Please review the leaflet and tick "I have reviewed and approve this PIL" before saving.')
+    }
 
     // Security Gate: Check Permissions
     if (activeMedId) {
@@ -1172,7 +1188,9 @@ function App() {
       med_name: drugName,
       med_group: drugGroup,
       med_type: drugType,
-      contents: contents
+      contents: contents,
+      approve: true, // recorded on the server as approved by the signed-in user
+      ...(aiGenerated ? { ai_generated: true } : {})
     }
 
     setIsSaving(true)
@@ -1199,7 +1217,8 @@ function App() {
         qrWarning = '\n\n(The PDF / QR code could not be updated: ' + (qrErr?.message || qrErr) + ')'
       }
 
-      alert('Saved! The label has been stored in the database.' + qrWarning)
+      alert(`Saved and approved by ${currentUser?.name || 'you'}. The label has been stored in the database.` + qrWarning)
+      setApprovalChecked(false)
       fetchAllSavedDrugs()
     } catch (err) {
       console.error('Save error:', err)
@@ -1991,6 +2010,20 @@ function App() {
                   <span>Join with 6-digit Code</span>
                 </button>
 
+                {canCreateLabel(currentUser) && (
+                  <button
+                    className="dashboard-sub-pill"
+                    onClick={() => setActiveModal('ai_generate')}
+                    title="AI Generate PIL"
+                  >
+                    <svg className="pill-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path>
+                      <path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"></path>
+                    </svg>
+                    <span>AI Generate PIL</span>
+                  </button>
+                )}
+
                 {canViewOwnActivity(currentUser) && (
                   <button
                     className="dashboard-sub-pill"
@@ -2039,6 +2072,15 @@ function App() {
         </main>
 
           {/* Interactive Modal for secondary features */}
+          {activeModal === 'ai_generate' && (
+            <AiGenerateModal
+              currentUser={currentUser}
+              topics={topics}
+              onClose={() => setActiveModal(null)}
+              onUseDraft={handleAiDraft}
+            />
+          )}
+
           {activeModal === 'import_word' && (
             <ImportDocumentModal
               topics={topics}
@@ -2047,7 +2089,7 @@ function App() {
             />
           )}
 
-          {activeModal && activeModal !== 'import_word' && (
+          {activeModal && activeModal !== 'import_word' && activeModal !== 'ai_generate' && (
             <div className="modal-backdrop" onClick={() => setActiveModal(null)}>
               <div className="modal-content-card" onClick={(e) => e.stopPropagation()}>
                 <button className="modal-close-btn" onClick={() => setActiveModal(null)}>✕</button>
@@ -3103,8 +3145,8 @@ function App() {
                     <button
                       className={`btn-save-nav ${!canSave ? 'guarded-disabled' : ''}`}
                       onClick={handleSaveTemplate}
-                      disabled={!canSave || isSaving}
-                      title={!canSave ? denial?.en : 'Save Template'}
+                      disabled={!canSave || isSaving || !approvalChecked}
+                      title={!canSave ? denial?.en : (!approvalChecked ? 'Tick the approval box below to enable saving' : 'Save Template')}
                     >
                       {!canSave ? 'Save (Locked)' : (isSaving ? 'Saving...' : 'Save Template')}
                     </button>
@@ -3171,6 +3213,39 @@ function App() {
                   <span>
                     <strong>Access Control Notice ({currentUser?.title || 'Notice'}):</strong> {denial?.en}
                   </span>
+                </div>
+              )
+            })()}
+
+            {/* AI draft warning + pharmacist approval (required before saving) */}
+            {(() => {
+              const canSave = activeMedId
+                ? canEditLabel(currentUser, activeMedDetails)
+                : (canCreateLabel(currentUser) && (currentUser?.role !== ROLES.PHARMACIST || canAccessMedicineCategory(currentUser, drugGroup)))
+              if (!canSave) return null
+              const lastApproval = activeMedDetails?.approved_by_name
+                ? `Last approved by ${activeMedDetails.approved_by_name}${activeMedDetails.approved_at ? ` on ${new Date(activeMedDetails.approved_at).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}` : ''}`
+                : null
+              return (
+                <div className="pil-approval-panel">
+                  {(aiGenerated || activeMedDetails?.ai_generated) && (
+                    <div className="pil-ai-banner">
+                      <strong>AI-generated content.</strong> This leaflet {aiGenerated ? 'was drafted' : 'was originally drafted'} by AI and may contain errors.
+                      Check every section against reliable sources before approving.
+                    </div>
+                  )}
+                  <label className={`pil-approval-check ${approvalChecked ? 'checked' : ''}`}>
+                    <input
+                      type="checkbox"
+                      checked={approvalChecked}
+                      onChange={(e) => setApprovalChecked(e.target.checked)}
+                    />
+                    <span>
+                      I, <strong>{currentUser?.name || currentUser?.email}</strong> ({currentUser?.role}), have reviewed and
+                      approve this PIL{aiGenerated || activeMedDetails?.ai_generated ? ', including the AI-generated content' : ''}.
+                    </span>
+                  </label>
+                  {lastApproval && <div className="pil-approval-last">{lastApproval}</div>}
                 </div>
               )
             })()}

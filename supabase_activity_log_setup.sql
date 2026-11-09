@@ -34,7 +34,12 @@ ALTER TABLE IF EXISTS public.medication_templates
   ADD COLUMN IF NOT EXISTS last_updated_by_role TEXT,
   ADD COLUMN IF NOT EXISTS last_updated_by_id TEXT,
   ADD COLUMN IF NOT EXISTS qr_code_url TEXT,
-  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW(),
+  -- Pharmacist approval and AI-generation tracking
+  ADD COLUMN IF NOT EXISTS ai_generated BOOLEAN DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS approved_by_id TEXT,
+  ADD COLUMN IF NOT EXISTS approved_by_name TEXT,
+  ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ;
 
 -- ----------------------------------------------------------------------------
 -- 2. ตาราง activity_logs
@@ -44,13 +49,18 @@ CREATE TABLE IF NOT EXISTS public.activity_logs (
   user_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
   user_name TEXT,
   user_role TEXT,
-  action TEXT NOT NULL CHECK (action IN ('create', 'update', 'delete', 'export_pdf', 'generate_qr', 'login')),
+  action TEXT NOT NULL,
   target_table TEXT,
   target_id TEXT,
   target_name TEXT,
   changes JSONB,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Allowed actions (re-created so re-running this file adds new ones)
+ALTER TABLE public.activity_logs DROP CONSTRAINT IF EXISTS activity_logs_action_check;
+ALTER TABLE public.activity_logs ADD CONSTRAINT activity_logs_action_check
+  CHECK (action IN ('create', 'update', 'delete', 'export_pdf', 'generate_qr', 'login', 'ai_generate'));
 
 CREATE INDEX IF NOT EXISTS activity_logs_user_created_idx
   ON public.activity_logs (user_id, created_at DESC);
@@ -130,7 +140,8 @@ DECLARE
   v_changes JSONB;
   v_ignored TEXT[] := ARRAY[
     'updated_at', 'qr_code_url', 'pdf_url',
-    'last_updated_by', 'last_updated_by_role', 'last_updated_by_id'
+    'last_updated_by', 'last_updated_by_role', 'last_updated_by_id',
+    'approved_by_id', 'approved_at'
   ];
 BEGIN
   IF TG_OP = 'INSERT' THEN

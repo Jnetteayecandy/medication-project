@@ -18,7 +18,8 @@ export const ACTIVITY_LABELS = {
   delete: { label: 'Deleted label', color: '#dc2626', bg: '#fef2f2' },
   export_pdf: { label: 'Exported PDF', color: '#7c3aed', bg: '#f3e8ff' },
   generate_qr: { label: 'Generated QR code', color: '#d97706', bg: '#fffbeb' },
-  login: { label: 'Signed in', color: '#64748b', bg: '#f1f5f9' }
+  login: { label: 'Signed in', color: '#64748b', bg: '#f1f5f9' },
+  ai_generate: { label: 'AI-generated draft', color: '#0891b2', bg: '#ecfeff' }
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i

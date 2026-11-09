@@ -6,7 +6,9 @@ const FIELD_LABELS = {
   med_name: 'Medication name',
   med_group: 'Drug group',
   med_type: 'Dosage form',
-  contents: 'Content'
+  contents: 'Content',
+  ai_generated: 'AI-generated',
+  approved_by_name: 'Approved by'
 }
 
 export function formatDateTime(value) {

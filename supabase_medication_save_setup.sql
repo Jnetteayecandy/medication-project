@@ -35,7 +35,11 @@ ALTER TABLE IF EXISTS public.medication_templates
   ADD COLUMN IF NOT EXISTS last_updated_by_role TEXT,
   ADD COLUMN IF NOT EXISTS last_updated_by_id TEXT,
   ADD COLUMN IF NOT EXISTS qr_code_url TEXT,
-  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW(),
+  ADD COLUMN IF NOT EXISTS ai_generated BOOLEAN DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS approved_by_id TEXT,
+  ADD COLUMN IF NOT EXISTS approved_by_name TEXT,
+  ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ;
 
 -- Every Supabase Auth account (e.g. Google sign-in) gets a profile, so the Admin page can
 -- list everyone and saves are attributed correctly. Existing profiles are never changed.
@@ -109,6 +113,10 @@ $$;
 -- 2. save_medication_template(p_user_id, p_id, p_data)
 --    - p_id NULL  -> insert a new label
 --    - p_id given -> update; only keys present in p_data are changed
+--    - Any change to the label's content (name, group, form, sections) must carry
+--      "approve": true - the signed-in user confirms they reviewed and approve this PIL,
+--      and is recorded as the approver. QR-link-only updates don't need it.
+--    - "ai_generated": true marks content drafted by the AI generator
 --    - Signed in via Supabase Auth: auth.uid() is used, p_user_id is ignored
 --    - Custom-auth users: p_user_id must exist in profiles
 --    Returns the saved row as JSON.
@@ -131,6 +139,9 @@ DECLARE
   v_new public.medication_templates;
   v_group TEXT;
   v_saved JSONB;
+  v_content_change BOOLEAN := p_data ?| ARRAY['med_name', 'med_group', 'med_type', 'contents'];
+  v_approve BOOLEAN := COALESCE((p_data->>'approve')::BOOLEAN, FALSE);
+  v_ai BOOLEAN := COALESCE((p_data->>'ai_generated')::BOOLEAN, FALSE);
 BEGIN
   SELECT actor_id, actor_name, actor_role INTO v_actor, v_name, v_role
   FROM public.resolve_actor(p_user_id);
@@ -139,6 +150,10 @@ BEGIN
   END IF;
 
   v_new := jsonb_populate_record(NULL::public.medication_templates, p_data);
+
+  IF (v_content_change OR p_id IS NULL OR p_id = '') AND NOT v_approve THEN
+    RAISE EXCEPTION 'Approval required: tick "I have reviewed and approve this PIL" before saving';
+  END IF;
 
   IF p_id IS NULL OR p_id = '' THEN
     IF COALESCE(TRIM(v_new.med_name), '') = '' THEN
@@ -151,11 +166,13 @@ BEGIN
     INSERT INTO public.medication_templates (
       med_name, med_group, med_type, contents, qr_code_url,
       created_by, created_by_name, created_by_role,
-      last_updated_by, last_updated_by_role, last_updated_by_id, updated_at
+      last_updated_by, last_updated_by_role, last_updated_by_id, updated_at,
+      ai_generated, approved_by_id, approved_by_name, approved_at
     ) VALUES (
       v_new.med_name, v_new.med_group, v_new.med_type, v_new.contents, v_new.qr_code_url,
       v_actor::TEXT, v_name, v_role,
-      v_name, v_role, v_actor::TEXT, NOW()
+      v_name, v_role, v_actor::TEXT, NOW(),
+      v_ai, v_actor::TEXT, v_name, NOW()
     )
     RETURNING to_jsonb(medication_templates.*) INTO v_saved;
     RETURN v_saved;
@@ -184,7 +201,11 @@ BEGIN
     last_updated_by = v_name,
     last_updated_by_role = v_role,
     last_updated_by_id = v_actor::TEXT,
-    updated_at = NOW()
+    updated_at = NOW(),
+    ai_generated     = CASE WHEN v_ai THEN TRUE ELSE COALESCE(t.ai_generated, FALSE) END,
+    approved_by_id   = CASE WHEN v_approve THEN v_actor::TEXT ELSE t.approved_by_id END,
+    approved_by_name = CASE WHEN v_approve THEN v_name ELSE t.approved_by_name END,
+    approved_at      = CASE WHEN v_approve THEN NOW() ELSE t.approved_at END
   WHERE t.id = v_existing.id
   RETURNING to_jsonb(t.*) INTO v_saved;
 

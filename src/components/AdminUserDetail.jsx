@@ -93,6 +93,12 @@ function UserLabels({ userId, onOpenLabel, onEditLabel, canEdit }) {
             <span className="uap-label-side">
               <span className="uap-muted">Last updated {formatDateTime(med.updated_at)}</span>
               {med.last_updated_by && <span className="uap-muted">by {med.last_updated_by}</span>}
+              <span className="uap-label-badges">
+                {med.approved_by_name
+                  ? <span className="uap-badge" style={{ background: '#ecfdf5', color: '#047857' }} title={med.approved_at ? formatDateTime(med.approved_at) : ''}>Approved by {med.approved_by_name}</span>
+                  : <span className="uap-badge" style={{ background: '#f1f5f9', color: '#64748b' }}>Not approved</span>}
+                {med.ai_generated && <span className="uap-badge" style={{ background: '#ecfeff', color: '#0e7490' }}>AI-assisted</span>}
+              </span>
             </span>
           </button>
           <div className="uap-label-actions">

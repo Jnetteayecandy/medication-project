@@ -65,8 +65,14 @@ export async function saveMedication(user, id, data) {
 }
 
 async function saveDirect(user, id, data) {
+  const { approve, ...fields } = data
   const stamped = {
-    ...data,
+    ...fields,
+    ...(approve ? {
+      approved_by_id: user?.id || null,
+      approved_by_name: user?.name || user?.email || null,
+      approved_at: new Date().toISOString()
+    } : {}),
     last_updated_by: user?.name || user?.email || 'User',
     last_updated_by_role: user?.role || 'STAFF',
     last_updated_by_id: user?.id || null,
@@ -85,7 +91,8 @@ async function saveDirect(user, id, data) {
   // If the database lacks optional tracking columns, drop them and retry
   // (only these; real content columns are never dropped silently)
   const optional = new Set(['last_updated_by', 'last_updated_by_role', 'last_updated_by_id',
-    'created_by', 'created_by_name', 'created_by_role', 'qr_code_url', 'updated_at'])
+    'created_by', 'created_by_name', 'created_by_role', 'qr_code_url', 'updated_at',
+    'ai_generated', 'approved_by_id', 'approved_by_name', 'approved_at'])
   const payload = { ...stamped }
   let result = await withTimeout(run(payload), SAVE_TIMEOUT_MS, 'Saving')
   for (let i = 0; i < optional.size && result.error; i++) {

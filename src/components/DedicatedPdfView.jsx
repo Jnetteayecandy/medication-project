@@ -244,6 +244,13 @@ export default function DedicatedPdfView({
                 PSU · Prince of Songkla University
               </span>
               <span>Patient Information Leaflet (PIL) · Last Updated: {drug.updated_at ? new Date(drug.updated_at).toLocaleDateString('en-GB') : '-'}</span>
+              {drug.approved_by_name && (
+                <span className="dedicated-approval-line">
+                  Reviewed &amp; approved by {drug.approved_by_name}
+                  {drug.approved_at ? ` · ${new Date(drug.approved_at).toLocaleDateString('en-GB')}` : ''}
+                  {drug.ai_generated ? ' · AI-assisted draft' : ''}
+                </span>
+              )}
             </footer>
           </div>
         ) : (
