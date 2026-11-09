@@ -1,19 +1,19 @@
 /**
- * Helpers สำหรับแสดงผลประวัติการทำงาน (activity_logs) ในหน้า Admin / ผลงานของฉัน
+ * Display helpers for activity history (activity_logs) on the Admin / My Work pages
  */
 
 const FIELD_LABELS = {
-  med_name: 'ชื่อยา',
-  med_group: 'กลุ่มยา',
-  med_type: 'รูปแบบยา',
-  contents: 'เนื้อหา'
+  med_name: 'Medication name',
+  med_group: 'Drug group',
+  med_type: 'Dosage form',
+  contents: 'Content'
 }
 
-export function formatThaiDateTime(value) {
+export function formatDateTime(value) {
   if (!value) return '-'
   const d = new Date(value)
   if (Number.isNaN(d.getTime())) return '-'
-  return d.toLocaleString('th-TH', {
+  return d.toLocaleString('en-GB', {
     year: 'numeric', month: 'short', day: 'numeric',
     hour: '2-digit', minute: '2-digit'
   })
@@ -26,8 +26,8 @@ function asText(value) {
 }
 
 /**
- * แปลง `changes` (jsonb: { field: { old, new } }) เป็นรายการที่อ่านง่าย
- * ฟิลด์ `contents` (array ของหัวข้อ PIL) จะแยกเป็นรายหัวข้อที่เปลี่ยนจริง
+ * Turn `changes` (jsonb: { field: { old, new } }) into a readable list.
+ * The `contents` field (array of PIL sections) is split into only the sections that changed.
  */
 export function describeChanges(changes, topics = []) {
   if (!changes || typeof changes !== 'object') return []
@@ -46,7 +46,7 @@ export function describeChanges(changes, topics = []) {
         if (asText(a[i]) === asText(b[i])) continue
         out.push({
           key: `contents-${i}`,
-          label: topics[i] || (i === 0 ? 'ส่วนหัว / ข้อความเพิ่มเติม' : `หัวข้อที่ ${i}`),
+          label: topics[i] || (i === 0 ? 'Header / additional text' : `Section ${i}`),
           oldText: asText(a[i]),
           newText: asText(b[i])
         })

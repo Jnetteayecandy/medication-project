@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../supabaseClient'
 import { ROLES, ROLE_CONFIG } from '../context/AuthContext'
-import { formatThaiDateTime } from '../utils/activityFormat'
+import { formatDateTime } from '../utils/activityFormat'
 
 /**
- * รายชื่อผู้ใช้ทั้งหมด (เฉพาะ Admin) พร้อมสรุปจำนวนงานของแต่ละคน
+ * List of all users (Admin only) with a work summary for each user
  */
 export default function AdminUserList({ onSelectUser }) {
   const [users, setUsers] = useState([])
@@ -32,7 +32,7 @@ export default function AdminUserList({ onSelectUser }) {
         if (cancelled) return
         if (profilesRes.error) throw profilesRes.error
 
-        // สรุปจากตารางฉลากยา (อ่านได้ทุกคนอยู่แล้ว)
+        // Summary from medication_templates (already publicly readable)
         const byUser = {}
         const bump = (uid, field, at) => {
           if (!uid) return
@@ -47,12 +47,12 @@ export default function AdminUserList({ onSelectUser }) {
           }
         }
 
-        // สรุปจาก activity_logs (ต้องเป็น Admin ที่ล็อกอินผ่าน Supabase Auth)
+        // Summary from activity_logs (requires an Admin signed in via Supabase Auth)
         const act = {}
         if (summaryRes.error) {
           setSummaryWarning(
-            'ยังอ่านสรุปประวัติการทำงานไม่ได้ (' + summaryRes.error.message + ') ' +
-            'ตรวจว่าได้รันไฟล์ supabase_activity_log_setup.sql แล้ว และล็อกอินด้วยบัญชี Admin ของ Supabase Auth'
+            'Unable to load the activity summary (' + summaryRes.error.message + ') ' +
+            'Make sure supabase_activity_log_setup.sql has been run and you are signed in with a Supabase Auth Admin account.'
           )
         } else {
           for (const row of summaryRes.data || []) act[row.user_id] = row
@@ -98,34 +98,34 @@ export default function AdminUserList({ onSelectUser }) {
         <input
           className="uap-input"
           type="search"
-          placeholder="ค้นหาชื่อหรืออีเมล..."
+          placeholder="Search by name or email..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
         <select className="uap-select" value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}>
-          <option value="ALL">ทุกบทบาท</option>
+          <option value="ALL">All roles</option>
           {Object.values(ROLES).map(r => <option key={r} value={r}>{r}</option>)}
         </select>
       </div>
 
       {summaryWarning && <div className="uap-warning">{summaryWarning}</div>}
-      {error && <div className="uap-error">โหลดรายชื่อผู้ใช้ไม่สำเร็จ: {error}</div>}
+      {error && <div className="uap-error">Failed to load users: {error}</div>}
 
       {loading ? (
-        <div className="uap-empty">กำลังโหลดรายชื่อผู้ใช้...</div>
+        <div className="uap-empty">Loading users...</div>
       ) : rows.length === 0 ? (
-        <div className="uap-empty">ไม่พบผู้ใช้ที่ตรงกับเงื่อนไข</div>
+        <div className="uap-empty">No users match your filters</div>
       ) : (
         <div className="uap-table-wrap">
           <table className="uap-table">
             <thead>
               <tr>
-                <th>ผู้ใช้</th>
-                <th>บทบาท</th>
-                <th className="uap-num">ฉลากที่สร้าง</th>
-                <th className="uap-num">ครั้งที่แก้ไข</th>
-                <th className="uap-num">กิจกรรมทั้งหมด</th>
-                <th>ทำงานล่าสุด</th>
+                <th>User</th>
+                <th>Role</th>
+                <th className="uap-num">Labels Created</th>
+                <th className="uap-num">Edits</th>
+                <th className="uap-num">Total Activity</th>
+                <th>Last Active</th>
               </tr>
             </thead>
             <tbody>
@@ -151,7 +151,7 @@ export default function AdminUserList({ onSelectUser }) {
                     <td className="uap-num">{u.createdCount}</td>
                     <td className="uap-num">{u.updateCount}</td>
                     <td className="uap-num">{u.totalActivity}</td>
-                    <td className="uap-muted">{u.lastAt ? formatThaiDateTime(u.lastAt) : 'ยังไม่มีการทำงาน'}</td>
+                    <td className="uap-muted">{u.lastAt ? formatDateTime(u.lastAt) : 'No activity yet'}</td>
                   </tr>
                 )
               })}

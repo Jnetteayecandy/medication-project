@@ -2,13 +2,13 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
 import { ROLE_CONFIG } from '../context/AuthContext'
 import { ACTIVITY_LABELS } from '../utils/activityLogger'
-import { describeChanges, formatThaiDateTime } from '../utils/activityFormat'
+import { describeChanges, formatDateTime } from '../utils/activityFormat'
 
 const PAGE_SIZE = 20
 
 /**
- * รายละเอียดผู้ใช้หนึ่งคน: ฉลากยาที่สร้าง + timeline ประวัติการทำงาน
- * ใช้ทั้งในหน้า Admin (ดูคนอื่น) และหน้า "ผลงานของฉัน" (isSelf)
+ * Details for a single user: labels they created + activity history timeline.
+ * Used on the Admin page (viewing others) and on the "My Work" page (isSelf).
  */
 export default function AdminUserDetail({ user, topics, isSelf = false, onOpenLabel }) {
   const [tab, setTab] = useState('labels') // 'labels' | 'activity'
@@ -33,10 +33,10 @@ export default function AdminUserDetail({ user, topics, isSelf = false, onOpenLa
 
       <div className="uap-tabs" role="tablist">
         <button role="tab" aria-selected={tab === 'labels'} className={`uap-tab ${tab === 'labels' ? 'active' : ''}`} onClick={() => setTab('labels')}>
-          ฉลากที่สร้าง
+          Labels Created
         </button>
         <button role="tab" aria-selected={tab === 'activity'} className={`uap-tab ${tab === 'activity' ? 'active' : ''}`} onClick={() => setTab('activity')}>
-          ประวัติการทำงาน
+          Activity History
         </button>
       </div>
 
@@ -71,22 +71,22 @@ function UserLabels({ userId, onOpenLabel }) {
     return () => { cancelled = true }
   }, [userId])
 
-  if (loading) return <div className="uap-empty">กำลังโหลดฉลากยา...</div>
-  if (error) return <div className="uap-error">โหลดฉลากยาไม่สำเร็จ: {error}</div>
-  if (labels.length === 0) return <div className="uap-empty">ผู้ใช้นี้ยังไม่ได้สร้างฉลากยา</div>
+  if (loading) return <div className="uap-empty">Loading labels...</div>
+  if (error) return <div className="uap-error">Failed to load labels: {error}</div>
+  if (labels.length === 0) return <div className="uap-empty">This user has not created any labels yet</div>
 
   return (
     <ul className="uap-label-list">
       {labels.map(med => (
         <li key={med.id}>
-          <button className="uap-label-item" onClick={() => onOpenLabel(med)} title="เปิดดูเอกสาร PIL">
+          <button className="uap-label-item" onClick={() => onOpenLabel(med)} title="Open PIL document">
             <span className="uap-label-main">
-              <span className="uap-label-name">{med.med_name || '(ไม่มีชื่อยา)'}</span>
+              <span className="uap-label-name">{med.med_name || '(Untitled medication)'}</span>
               <span className="uap-muted">{[med.med_group, med.med_type].filter(Boolean).join(' · ') || '-'}</span>
             </span>
             <span className="uap-label-side">
-              <span className="uap-muted">แก้ไขล่าสุด {formatThaiDateTime(med.updated_at)}</span>
-              {med.last_updated_by && <span className="uap-muted">โดย {med.last_updated_by}</span>}
+              <span className="uap-muted">Last updated {formatDateTime(med.updated_at)}</span>
+              {med.last_updated_by && <span className="uap-muted">by {med.last_updated_by}</span>}
             </span>
           </button>
         </li>
@@ -145,40 +145,40 @@ function UserActivity({ userId, topics, isSelf }) {
     <div>
       <div className="uap-toolbar">
         <select className="uap-select" value={actionFilter} onChange={resetPage(setActionFilter)}>
-          <option value="ALL">ทุกประเภท</option>
-          {Object.entries(ACTIVITY_LABELS).map(([k, v]) => <option key={k} value={k}>{v.th}</option>)}
+          <option value="ALL">All actions</option>
+          {Object.entries(ACTIVITY_LABELS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
         </select>
         <label className="uap-date-label">
-          ตั้งแต่
+          From
           <input className="uap-input" type="date" value={dateFrom} onChange={resetPage(setDateFrom)} />
         </label>
         <label className="uap-date-label">
-          ถึง
+          To
           <input className="uap-input" type="date" value={dateTo} onChange={resetPage(setDateTo)} />
         </label>
       </div>
 
       {error && (
         <div className="uap-error">
-          โหลดประวัติไม่สำเร็จ: {error}
+          Failed to load activity: {error}
         </div>
       )}
 
       {loading ? (
-        <div className="uap-empty">กำลังโหลดประวัติการทำงาน...</div>
+        <div className="uap-empty">Loading activity...</div>
       ) : logs.length === 0 ? (
         <div className="uap-empty">
-          ไม่พบประวัติการทำงาน
+          No activity found
           {isSelf && (
             <div className="uap-muted uap-hint">
-              หมายเหตุ: ประวัติจะแสดงให้เจ้าของดูได้เฉพาะเมื่อล็อกอินผ่าน Supabase Auth (Admin ดูได้เสมอ)
+              Note: you can only view your own history when signed in via Supabase Auth (Admins can always view it).
             </div>
           )}
         </div>
       ) : (
         <ol className="uap-timeline">
           {logs.map(log => {
-            const meta = ACTIVITY_LABELS[log.action] || { th: log.action, color: '#64748b', bg: '#f1f5f9' }
+            const meta = ACTIVITY_LABELS[log.action] || { label: log.action, color: '#64748b', bg: '#f1f5f9' }
             const diffs = describeChanges(log.changes, topics)
             const expanded = expandedId === log.id
             return (
@@ -186,13 +186,13 @@ function UserActivity({ userId, topics, isSelf }) {
                 <span className="uap-dot" style={{ background: meta.color }} />
                 <div className="uap-timeline-body">
                   <div className="uap-timeline-head">
-                    <span className="uap-badge" style={{ background: meta.bg, color: meta.color }}>{meta.th}</span>
+                    <span className="uap-badge" style={{ background: meta.bg, color: meta.color }}>{meta.label}</span>
                     <span className="uap-timeline-target">{log.target_name || '-'}</span>
-                    <span className="uap-muted uap-timeline-time">{formatThaiDateTime(log.created_at)}</span>
+                    <span className="uap-muted uap-timeline-time">{formatDateTime(log.created_at)}</span>
                   </div>
                   {diffs.length > 0 && (
                     <button className="uap-link-btn" onClick={() => setExpandedId(expanded ? null : log.id)}>
-                      {expanded ? 'ซ่อนรายละเอียด' : `ดูการเปลี่ยนแปลง (${diffs.length})`}
+                      {expanded ? 'Hide details' : `View changes (${diffs.length})`}
                     </button>
                   )}
                   {expanded && (
@@ -201,8 +201,8 @@ function UserActivity({ userId, topics, isSelf }) {
                         <div key={d.key} className="uap-diff">
                           <div className="uap-diff-label">{d.label}</div>
                           <div className="uap-diff-cols">
-                            <div className="uap-diff-old"><span>เดิม</span><p>{d.oldText || '—'}</p></div>
-                            <div className="uap-diff-new"><span>ใหม่</span><p>{d.newText || '—'}</p></div>
+                            <div className="uap-diff-old"><span>Before</span><p>{d.oldText || '—'}</p></div>
+                            <div className="uap-diff-new"><span>After</span><p>{d.newText || '—'}</p></div>
                           </div>
                         </div>
                       ))}
@@ -217,9 +217,9 @@ function UserActivity({ userId, topics, isSelf }) {
 
       {total > PAGE_SIZE && (
         <div className="uap-pager">
-          <button className="uap-btn" disabled={page === 0} onClick={() => setPage(p => p - 1)}>ก่อนหน้า</button>
-          <span className="uap-muted">หน้า {page + 1} / {totalPages} ({total} รายการ)</span>
-          <button className="uap-btn" disabled={page + 1 >= totalPages} onClick={() => setPage(p => p + 1)}>ถัดไป</button>
+          <button className="uap-btn" disabled={page === 0} onClick={() => setPage(p => p - 1)}>Previous</button>
+          <span className="uap-muted">Page {page + 1} / {totalPages} ({total} items)</span>
+          <button className="uap-btn" disabled={page + 1 >= totalPages} onClick={() => setPage(p => p + 1)}>Next</button>
         </div>
       )}
     </div>

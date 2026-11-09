@@ -5,16 +5,16 @@ import DedicatedPdfView from './DedicatedPdfView'
 import './UserActivityPanel.css'
 
 /**
- * หน้าดูผลงานและประวัติการทำงานของผู้ใช้
- * - mode 'admin': Admin เห็นรายชื่อผู้ใช้ทุกคน → กดเข้าไปดูรายละเอียดแต่ละคน
- * - mode 'self' : ผู้ใช้ทั่วไปเห็นเฉพาะผลงานของตัวเอง
+ * User work & activity history page
+ * - mode 'admin': Admin sees every user → click through to each user's details
+ * - mode 'self' : regular users see only their own work
  */
 export default function UserActivityPanel({ currentUser, mode = 'admin', onBack, topics }) {
   const isSelf = mode === 'self'
   const [selectedUser, setSelectedUser] = useState(null)
   const [openLabel, setOpenLabel] = useState(null)
 
-  // เปิดเอกสาร PIL ด้วยหน้าเดิมของระบบ (อ่านอย่างเดียว)
+  // Open the PIL document with the existing PIL view (read-only)
   if (openLabel) {
     return (
       <DedicatedPdfView
@@ -37,10 +37,10 @@ export default function UserActivityPanel({ currentUser, mode = 'admin', onBack,
   } : null
 
   const detailUser = selfProfile || selectedUser
-  const title = isSelf ? 'ผลงานของฉัน' : (selectedUser ? 'รายละเอียดผู้ใช้' : 'จัดการผู้ใช้ (Admin)')
+  const title = isSelf ? 'My Work' : (selectedUser ? 'User Details' : 'User Management (Admin)')
   const subtitle = isSelf
-    ? 'ฉลากยาที่คุณสร้าง และประวัติการทำงานของคุณ'
-    : (selectedUser ? 'ฉลากยาที่สร้างและประวัติการทำงานทั้งหมด' : 'ดูว่าผู้ใช้แต่ละคนทำอะไรไปบ้างในระบบ')
+    ? 'Labels you created and your activity history'
+    : (selectedUser ? 'Labels created and full activity history' : 'See what each user has done in the system')
 
   const handleBack = () => {
     if (!isSelf && selectedUser) setSelectedUser(null)
@@ -54,7 +54,7 @@ export default function UserActivityPanel({ currentUser, mode = 'admin', onBack,
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="15 18 9 12 15 6"></polyline>
           </svg>
-          <span>{!isSelf && selectedUser ? 'กลับไปรายชื่อผู้ใช้' : 'กลับหน้าหลัก'}</span>
+          <span>{!isSelf && selectedUser ? 'Back to users' : 'Back to dashboard'}</span>
         </button>
         <div className="uap-header-text">
           <h1 className="uap-title">{title}</h1>

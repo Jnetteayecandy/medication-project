@@ -5,20 +5,20 @@ import { ROLES } from '../context/AuthContext'
  * ============================================================================
  * ACTIVITY LOGGER
  * ============================================================================
- * บันทึก action ฝั่ง client ลงตาราง `activity_logs` ผ่านฟังก์ชัน `log_activity()` ใน Supabase
+ * Records client-side actions in `activity_logs` via the Supabase `log_activity()` function.
  *
- * - การสร้าง / แก้ไขฉลากยา ถูกบันทึกอัตโนมัติโดย trigger ในฐานข้อมูลแล้ว ไม่ต้องเรียกซ้ำ
- * - ใช้ฟังก์ชันนี้กับ: 'delete' | 'export_pdf' | 'generate_qr' | 'login'
- * - การบันทึก log ล้มเหลวจะไม่ทำให้งานหลักล้มเหลว (แค่ console.warn)
+ * - Label create / update is already logged automatically by a database trigger; don't log it again.
+ * - Use this for: 'delete' | 'export_pdf' | 'generate_qr' | 'login'
+ * - A failed log write never fails the main action (console.warn only).
  */
 
 export const ACTIVITY_LABELS = {
-  create: { th: 'สร้างฉลากยา', color: '#059669', bg: '#ecfdf5' },
-  update: { th: 'แก้ไขฉลากยา', color: '#2563eb', bg: '#eff6ff' },
-  delete: { th: 'ลบฉลากยา', color: '#dc2626', bg: '#fef2f2' },
-  export_pdf: { th: 'ส่งออก PDF', color: '#7c3aed', bg: '#f3e8ff' },
-  generate_qr: { th: 'สร้าง QR Code', color: '#d97706', bg: '#fffbeb' },
-  login: { th: 'เข้าสู่ระบบ', color: '#64748b', bg: '#f1f5f9' }
+  create: { label: 'Created label', color: '#059669', bg: '#ecfdf5' },
+  update: { label: 'Edited label', color: '#2563eb', bg: '#eff6ff' },
+  delete: { label: 'Deleted label', color: '#dc2626', bg: '#fef2f2' },
+  export_pdf: { label: 'Exported PDF', color: '#7c3aed', bg: '#f3e8ff' },
+  generate_qr: { label: 'Generated QR code', color: '#d97706', bg: '#fffbeb' },
+  login: { label: 'Signed in', color: '#64748b', bg: '#f1f5f9' }
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
