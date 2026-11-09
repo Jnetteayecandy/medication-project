@@ -45,6 +45,7 @@ add the secrets under Edge Functions → Secrets.
 |---|---|---|
 | `AI_PROVIDER` | `gemini` if `GEMINI_API_KEY` is set, else `claude` | Which AI to use |
 | `GEMINI_MODEL` | `gemini-flash-latest` | Gemini model (the alias always points to the current Flash model) |
+| `GEMINI_FALLBACK_MODELS` | `gemini-flash-lite-latest,gemini-2.5-flash,gemini-2.5-flash-lite` | Tried in order when a model has no free quota |
 | `PIL_AI_MODEL` | `claude-opus-5-5` | Claude model. Cheaper: `claude-sonnet-5-5` or `claude-haiku-5-5` |
 | `PIL_AI_EFFORT` | `medium` | Claude only: `low` / `medium` / `high` |
 | `AI_DAILY_LIMIT` | `30` | Generations per user per 24 hours |

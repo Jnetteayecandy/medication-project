@@ -35,6 +35,10 @@ const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY") ?? "";
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
 const PROVIDER = (Deno.env.get("AI_PROVIDER") ?? (GEMINI_API_KEY ? "gemini" : "claude")).toLowerCase();
 const GEMINI_MODEL = Deno.env.get("GEMINI_MODEL") ?? "gemini-flash-latest";
+// Tried in order when a model has no free quota (429) or doesn't exist (404)
+const GEMINI_FALLBACK_MODELS = (Deno.env.get("GEMINI_FALLBACK_MODELS") ??
+  "gemini-flash-lite-latest,gemini-2.5-flash,gemini-2.5-flash-lite")
+  .split(",").map((m) => m.trim()).filter(Boolean);
 const GEMINI_BASE_URL = Deno.env.get("GEMINI_BASE_URL") ?? "https://generativelanguage.googleapis.com";
 const MODEL = Deno.env.get("PIL_AI_MODEL") ?? "claude-opus-5-5";
 const EFFORT = (Deno.env.get("PIL_AI_EFFORT") ?? "medium") as "low" | "medium" | "high" | "xhigh" | "max";
@@ -250,8 +254,14 @@ type GeminiResponse = {
   error?: { code?: number; message?: string; status?: string };
 };
 
-async function callGemini(body: unknown): Promise<GeminiResponse> {
-  const url = `${GEMINI_BASE_URL}/v1beta/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent`;
+class GeminiHttpError extends AiError {
+  constructor(status: number, message: string, public httpStatus: number, public detail: string) {
+    super(status, message);
+  }
+}
+
+async function callGemini(model: string, body: unknown): Promise<GeminiResponse> {
+  const url = `${GEMINI_BASE_URL}/v1beta/models/${encodeURIComponent(model)}:generateContent`;
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-goog-api-key": GEMINI_API_KEY },
@@ -259,15 +269,11 @@ async function callGemini(body: unknown): Promise<GeminiResponse> {
   });
   const data = (await res.json().catch(() => ({}))) as GeminiResponse;
   if (!res.ok) {
-    const message = data.error?.message ?? `HTTP ${res.status}`;
-    if (res.status === 400 && /api key/i.test(message)) {
+    const detail = (data.error?.message ?? `HTTP ${res.status}`).slice(0, 400);
+    if (res.status === 400 && /api key/i.test(detail)) {
       throw new AiError(500, "The Gemini API key is invalid. Please contact the administrator.");
     }
-    if (res.status === 403) throw new AiError(500, `The Gemini API key is not allowed to use this model: ${message}`);
-    if (res.status === 429) {
-      throw new AiError(429, "The free Gemini quota is used up for now. Please wait a minute (or until tomorrow) and try again.");
-    }
-    throw new AiError(res.status >= 500 ? 502 : res.status, `Gemini error (${res.status}): ${message}`);
+    throw new GeminiHttpError(res.status >= 500 ? 502 : res.status, `Gemini error (${res.status}) on ${model}: ${detail}`, res.status, detail);
   }
   return data;
 }
@@ -307,29 +313,24 @@ function parseDraftJson(text: string): PilDraft | null {
   }
 }
 
-async function generateWithGemini(request: string, useWebSearch: boolean): Promise<GenerationResult> {
-  if (!GEMINI_API_KEY) {
-    throw new AiError(500, "The AI service is not configured yet (missing GEMINI_API_KEY secret).");
-  }
-  const systemInstruction = { parts: [{ text: SYSTEM_PROMPT.replace(/call the submit_pil tool exactly once with the complete leaflet\./, "reply with the complete leaflet.") + GEMINI_JSON_INSTRUCTIONS }] };
+/** One attempt with one model, with or without Google Search grounding. */
+async function geminiAttempt(model: string, request: string, withSearch: boolean) {
+  const systemInstruction = {
+    parts: [{
+      text: SYSTEM_PROMPT.replace(/call the submit_pil tool exactly once with the complete leaflet\./, "reply with the complete leaflet.") +
+        GEMINI_JSON_INSTRUCTIONS,
+    }],
+  };
   const contents = [{ role: "user", parts: [{ text: request }] }];
   const foundSources = new Map<string, string>();
-  const caveatsExtra: string[] = [];
   let text = "";
 
-  if (useWebSearch) {
-    // Grounding with Google Search; JSON is requested in the prompt because some
-    // models don't accept a response schema together with the search tool.
-    try {
-      const data = await callGemini({ systemInstruction, contents, tools: [{ google_search: {} }] });
-      text = geminiText(data);
-      for (const chunk of data.candidates?.[0]?.groundingMetadata?.groundingChunks ?? []) {
-        if (chunk.web?.uri) foundSources.set(chunk.web.uri, chunk.web.title ?? chunk.web.uri);
-      }
-    } catch (err) {
-      // e.g. search grounding not available on this key's free tier: continue without it
-      if (!(err instanceof AiError) || err.status === 429 || err.status === 422 || /key is invalid/.test(err.message)) throw err;
-      caveatsExtra.push(`Web search was not available (${err.message}); the draft is based on general knowledge only.`);
+  if (withSearch) {
+    // JSON is requested in the prompt: some models don't accept a response schema with the search tool
+    const data = await callGemini(model, { systemInstruction, contents, tools: [{ google_search: {} }] });
+    text = geminiText(data);
+    for (const chunk of data.candidates?.[0]?.groundingMetadata?.groundingChunks ?? []) {
+      if (chunk.web?.uri) foundSources.set(chunk.web.uri, chunk.web.title ?? chunk.web.uri);
     }
   }
 
@@ -339,7 +340,7 @@ async function generateWithGemini(request: string, useWebSearch: boolean): Promi
     const followUp = text
       ? [...contents, { role: "model", parts: [{ text }] }, { role: "user", parts: [{ text: "Convert your answer into the required JSON object, keeping all content and sources." }] }]
       : contents;
-    const data = await callGemini({
+    const data = await callGemini(model, {
       systemInstruction,
       contents: followUp,
       generationConfig: { responseMimeType: "application/json", responseSchema: GEMINI_SCHEMA },
@@ -347,8 +348,47 @@ async function generateWithGemini(request: string, useWebSearch: boolean): Promi
     draft = parseDraftJson(geminiText(data));
   }
   if (!draft) throw new AiError(502, "The AI did not return a leaflet in the expected format. Please try again.");
-  draft.caveats = [...(draft.caveats ?? []), ...caveatsExtra];
-  return { draft, foundSources, usedModel: GEMINI_MODEL };
+  return { draft, foundSources };
+}
+
+async function generateWithGemini(request: string, useWebSearch: boolean): Promise<GenerationResult> {
+  if (!GEMINI_API_KEY) {
+    throw new AiError(500, "The AI service is not configured yet (missing GEMINI_API_KEY secret).");
+  }
+  const models = [...new Set([GEMINI_MODEL, ...GEMINI_FALLBACK_MODELS])];
+  const notes: string[] = [];
+  let lastError: GeminiHttpError | null = null;
+
+  for (const model of models) {
+    // With search first (if asked), then without: search grounding often has its own,
+    // smaller free quota (or none), reported as 429/400/403
+    const modes = useWebSearch ? [true, false] : [false];
+    for (const withSearch of modes) {
+      try {
+        const { draft, foundSources } = await geminiAttempt(model, request, withSearch);
+        if (useWebSearch && !withSearch) {
+          notes.push("Web search was not available on this Gemini key, so the draft is based on general knowledge only - check product-specific details carefully.");
+        }
+        draft.caveats = [...(draft.caveats ?? []), ...notes];
+        return { draft, foundSources, usedModel: model };
+      } catch (err) {
+        if (!(err instanceof GeminiHttpError)) throw err; // invalid key, safety block, bad format
+        lastError = err;
+        console.warn(`Gemini attempt failed (model=${model}, search=${withSearch}): ${err.message}`);
+        if (withSearch) {
+          continue; // retry the same model without search
+        }
+        if (err.httpStatus === 429 || err.httpStatus === 404 || err.httpStatus === 403) break; // next model
+        throw err;
+      }
+    }
+  }
+
+  if (lastError?.httpStatus === 429) {
+    throw new AiError(429, `No free Gemini quota is available right now (tried: ${models.join(", ")}). ` +
+      `Wait a minute and try again, or check your limits in Google AI Studio. Google said: ${lastError.detail}`);
+  }
+  throw new AiError(lastError?.status ?? 502, lastError?.message ?? "Gemini request failed.");
 }
 
 Deno.serve(async (req) => {
