@@ -31,6 +31,7 @@ import CompleteProfile from './components/CompleteProfile'
 import GuidedTour from './components/GuidedTour'
 import UserActivityPanel from './components/UserActivityPanel'
 import { logActivity } from './utils/activityLogger'
+import { saveMedication, deleteMedication } from './utils/medicationStore'
 
 // Initial default manage data matching mockup
 const DEFAULT_MANAGE_DATA = {
@@ -1082,22 +1083,7 @@ function App() {
     }
     if (!window.confirm(`Are you sure you want to delete "${name}" from the database?`)) return
     try {
-      const { error } = await supabase
-        .from('medication_templates')
-        .delete()
-        .eq('id', id)
-      if (error) throw error
-      logActivity(currentUser, {
-        action: 'delete',
-        targetTable: 'medication_templates',
-        targetId: id,
-        targetName: name,
-        changes: drugToDelete ? {
-          med_name: { old: drugToDelete.med_name ?? null, new: null },
-          med_group: { old: drugToDelete.med_group ?? null, new: null },
-          med_type: { old: drugToDelete.med_type ?? null, new: null }
-        } : null
-      })
+      await deleteMedication(currentUser, drugToDelete || { id, med_name: name })
       setSavedDrugsList(prev => prev.filter(d => d.id !== id))
     } catch (err) {
       alert('Error deleting medication: ' + err.message)
@@ -1127,7 +1113,7 @@ function App() {
 
   // ฟังก์ชันเซฟข้อมูล (Upsert with RBAC & Resource Ownership)
   const handleSaveTemplate = async () => {
-    if (!drugName) return alert("กรุณาใส่ชื่อยาก่อนเซฟ")
+    if (!drugName) return alert("Please enter a medication name before saving.")
 
     // Security Gate: Check Permissions
     if (activeMedId) {
@@ -1152,76 +1138,38 @@ function App() {
       med_name: drugName,
       med_group: drugGroup,
       med_type: drugType,
-      contents: contents,
-      last_updated_by: currentUser?.name || currentUser?.email || 'User',
-      last_updated_by_role: currentUser?.role || 'STAFF',
-      last_updated_by_id: currentUser?.id || null,
-      updated_at: new Date()
-    }
-
-    // Attach creator ownership metadata if new
-    if (!activeMedId && currentUser) {
-      medData.created_by = currentUser.id
-      medData.created_by_name = currentUser.name
-      medData.created_by_role = currentUser.role
+      contents: contents
     }
 
     try {
-      let result;
-      let targetMedId = activeMedId;
+      let saved
 
       if (activeMedId) {
-        // Pre-generate / update QR code URL and upload PDF
+        // Existing label: rebuild PDF / QR link, then update
         try {
           const qrInfo = await generateAndDistributeQRCode({ ...medData, id: activeMedId })
           medData.qr_code_url = qrInfo.finalUrl
         } catch (qrErr) {
           console.warn('QR Code generation notice:', qrErr)
         }
-
-        // ถ้าเป็นยาเก่าที่มี ID อยู่แล้ว ให้ Update
-        result = await supabase
-          .from('medication_templates')
-          .update(medData)
-          .eq('id', activeMedId)
-          .select()
-
-        if (result.data && result.data.length > 0) {
-          setActiveMedDetails(result.data[0])
-        }
+        saved = await saveMedication(currentUser, activeMedId, medData)
       } else {
-        // ถ้าเป็นยาใหม่ ให้ Insert
-        result = await supabase
-          .from('medication_templates')
-          .insert([medData])
-          .select()
-
-        if (result.data && result.data.length > 0) {
-          targetMedId = result.data[0].id
-          setActiveMedId(targetMedId)
-
-          // Automatically generate PDF and QR code for newly assigned ID and save
-          try {
-            const qrInfo = await generateAndDistributeQRCode({ ...medData, id: targetMedId })
-            await supabase
-              .from('medication_templates')
-              .update({ qr_code_url: qrInfo.finalUrl })
-              .eq('id', targetMedId)
-
-            const savedRecord = { ...result.data[0], qr_code_url: qrInfo.finalUrl }
-            setActiveMedDetails(savedRecord)
-          } catch (qrErr) {
-            console.warn('QR Code generation notice for new drug:', qrErr)
-            setActiveMedDetails(result.data[0])
-          }
+        // New label: insert first to get an ID, then build PDF / QR for that ID
+        saved = await saveMedication(currentUser, null, medData)
+        setActiveMedId(saved.id)
+        try {
+          const qrInfo = await generateAndDistributeQRCode({ ...medData, id: saved.id })
+          saved = await saveMedication(currentUser, saved.id, { qr_code_url: qrInfo.finalUrl })
+        } catch (qrErr) {
+          console.warn('QR Code generation notice for new drug:', qrErr)
         }
       }
 
-      if (result.error) throw result.error
-      alert("บันทึกข้อมูล สร้างเอกสาร PDF และ QR Code สำเร็จแล้ว!")
+      setActiveMedDetails(saved)
+      alert('Saved! The label, PDF and QR code have been stored in the database.')
       fetchAllSavedDrugs()
     } catch (err) {
-      alert("Save Error: " + err.message)
+      alert('Save failed:\n' + (err?.message || err))
     }
   }
 
@@ -1280,12 +1228,7 @@ function App() {
       setQrDataUrl(qrInfo.dataUrl)
       setQrSvgString(qrInfo.svgString)
 
-      const { error } = await supabase
-        .from('medication_templates')
-        .update({ qr_code_url: qrInfo.finalUrl })
-        .eq('id', qrModalMed.id)
-
-      if (error) throw error
+      await saveMedication(currentUser, qrModalMed.id, { qr_code_url: qrInfo.finalUrl })
       logActivity(currentUser, {
         action: 'generate_qr',
         targetTable: 'medication_templates',
