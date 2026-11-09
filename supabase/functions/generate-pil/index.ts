@@ -363,27 +363,42 @@ async function generateWithGemini(request: string, useWebSearch: boolean): Promi
     // With search first (if asked), then without: search grounding often has its own,
     // smaller free quota (or none), reported as 429/400/403
     const modes = useWebSearch ? [true, false] : [false];
+    let nextModel = false;
     for (const withSearch of modes) {
-      try {
-        const { draft, foundSources } = await geminiAttempt(model, request, withSearch);
-        if (useWebSearch && !withSearch) {
-          notes.push("Web search was not available on this Gemini key, so the draft is based on general knowledge only - check product-specific details carefully.");
+      for (let tryNo = 0; tryNo < 2; tryNo++) {
+        try {
+          const { draft, foundSources } = await geminiAttempt(model, request, withSearch);
+          if (useWebSearch && !withSearch) {
+            notes.push("Web search was not available on this Gemini key, so the draft is based on general knowledge only - check product-specific details carefully.");
+          }
+          draft.caveats = [...(draft.caveats ?? []), ...notes];
+          return { draft, foundSources, usedModel: model };
+        } catch (err) {
+          if (!(err instanceof GeminiHttpError)) throw err; // invalid key, safety block, bad format
+          lastError = err;
+          console.warn(`Gemini attempt failed (model=${model}, search=${withSearch}, try=${tryNo + 1}): ${err.message}`);
+          if (err.httpStatus >= 500 && tryNo === 0) {
+            await new Promise((r) => setTimeout(r, 2000)); // overloaded: wait and retry once
+            continue;
+          }
+          if (err.httpStatus >= 500) {
+            nextModel = true; // still overloaded: try another model (keep search on)
+          } else if (!withSearch && ![429, 404, 403].includes(err.httpStatus)) {
+            throw err;
+          } else if (!withSearch) {
+            nextModel = true; // no quota / no access for this model
+          }
+          break; // with search and 4xx: retry this model without search
         }
-        draft.caveats = [...(draft.caveats ?? []), ...notes];
-        return { draft, foundSources, usedModel: model };
-      } catch (err) {
-        if (!(err instanceof GeminiHttpError)) throw err; // invalid key, safety block, bad format
-        lastError = err;
-        console.warn(`Gemini attempt failed (model=${model}, search=${withSearch}): ${err.message}`);
-        if (withSearch) {
-          continue; // retry the same model without search
-        }
-        if (err.httpStatus === 429 || err.httpStatus === 404 || err.httpStatus === 403) break; // next model
-        throw err;
       }
+      if (nextModel) break;
     }
   }
 
+  if (lastError && lastError.httpStatus >= 500) {
+    throw new AiError(503, `Gemini is busy right now (tried: ${models.join(", ")}). ` +
+      `This is usually temporary - please try again in a few minutes. Google said: ${lastError.detail}`);
+  }
   if (lastError?.httpStatus === 429) {
     throw new AiError(429, `No free Gemini quota is available right now (tried: ${models.join(", ")}). ` +
       `Wait a minute and try again, or check your limits in Google AI Studio. Google said: ${lastError.detail}`);
