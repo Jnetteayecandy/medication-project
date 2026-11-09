@@ -30,7 +30,7 @@ The Anthropic API key is stored only as a Supabase secret, never in the web app.
 
 | Secret | Default | Meaning |
 |---|---|---|
-| `PIL_AI_MODEL` | `claude-opus-5-5` | Claude model |
+| `PIL_AI_MODEL` | `claude-opus-5-5` | Claude model. Cheaper: `claude-sonnet-5-5` (about half the price) or `claude-haiku-5-5` (much cheaper, less thorough) |
 | `PIL_AI_EFFORT` | `medium` | `low` / `medium` / `high` - higher is more thorough but slower and costs more |
 | `AI_DAILY_LIMIT` | `30` | Generations per user per 24 hours |
 

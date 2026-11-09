@@ -12,7 +12,7 @@
 //
 // Deploy:  supabase functions deploy generate-pil --no-verify-jwt
 // Secrets: supabase secrets set ANTHROPIC_API_KEY=...   (optional: PIL_AI_MODEL,
-//          PIL_AI_EFFORT, AI_DAILY_LIMIT)
+//          PIL_AI_EFFORT, AI_DAILY_LIMIT). Cheaper models: claude-sonnet-5-5, claude-haiku-5-5
 // =============================================================================
 
 import Anthropic from "npm:@anthropic-ai/sdk@1.3.0";
@@ -28,6 +28,10 @@ const MODEL = Deno.env.get("PIL_AI_MODEL") ?? "claude-opus-5-5";
 const EFFORT = (Deno.env.get("PIL_AI_EFFORT") ?? "medium") as "low" | "medium" | "high" | "xhigh" | "max";
 const DAILY_LIMIT = Number(Deno.env.get("AI_DAILY_LIMIT") ?? "30");
 const ALLOWED_ROLES = ["ADMIN", "PHARMACIST", "STAFF"];
+// Server-side refusal fallback exists for Opus 5.x / Fable 5.x / Sonnet 5.5 only (not Haiku)
+const SUPPORTS_FALLBACK = /^claude-(opus-5|fable-5|sonnet-5-5)/.test(MODEL);
+// Web search with dynamic filtering is not available on Haiku; use the basic version there
+const WEB_SEARCH_TYPE = /^claude-haiku/.test(MODEL) ? "web_search_20250305" as const : "web_search_20260209" as const;
 
 const SYSTEM_PROMPT = `You draft Thai-language Patient Information Leaflets (PIL, เอกสารกำกับยาสำหรับประชาชน) for a hospital pharmacy system. A licensed pharmacist reviews and approves every draft before it is published to patients, so your job is to give them an accurate, complete, easy-to-check starting point.
 
@@ -185,7 +189,7 @@ Deno.serve(async (req) => {
 
   const client = new Anthropic({ apiKey });
   const tools: Anthropic.Beta.BetaToolUnion[] = [
-    ...(useWebSearch ? [{ type: "web_search_20260209" as const, name: "web_search" as const, max_uses: 6 }] : []),
+    ...(useWebSearch ? [{ type: WEB_SEARCH_TYPE, name: "web_search" as const, max_uses: 6 }] : []),
     SUBMIT_PIL_TOOL,
   ];
   const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: "user", content: request }];
@@ -199,8 +203,7 @@ Deno.serve(async (req) => {
         .stream({
           model: MODEL,
           max_tokens: 32000,
-          betas: ["server-side-fallback-2026-07-01"],
-          fallbacks: "default",
+          ...(SUPPORTS_FALLBACK ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const } : {}),
           output_config: { effort: EFFORT },
           system: SYSTEM_PROMPT,
           tools,
