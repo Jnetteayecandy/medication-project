@@ -34,9 +34,18 @@ export default function AiGenerateModal({ currentUser, topics, onClose, onUseDra
       if (fnError) {
         // Edge Function errors carry the JSON body in fnError.context
         let message = fnError.message
+        const status = fnError.context?.status
         try {
-          const body = await fnError.context?.json?.()
-          if (body?.error) message = body.error
+          const raw = await fnError.context?.text?.()
+          let parsed = null
+          try { parsed = raw ? JSON.parse(raw) : null } catch { /* not JSON */ }
+          if (parsed?.error) {
+            message = parsed.error
+          } else if (status === 504 || status === 546 || /timeout|wall ?clock|WORKER_LIMIT/i.test(raw || '')) {
+            message = 'The AI took too long and the request was stopped. Please try again, or untick "Search the web" for a faster draft.'
+          } else if (status) {
+            message = `AI service error (HTTP ${status})${raw ? `: ${String(raw).slice(0, 200)}` : ''}`
+          }
         } catch { /* keep default message */ }
         if (/Failed to send a request|not found|404/i.test(message)) {
           message = 'The AI service is not set up yet. Ask the administrator to deploy the "generate-pil" Edge Function and set the ANTHROPIC_API_KEY secret.'

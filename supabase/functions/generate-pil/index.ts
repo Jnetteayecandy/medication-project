@@ -36,6 +36,11 @@ const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
 const PROVIDER = (Deno.env.get("AI_PROVIDER") ?? (GEMINI_API_KEY ? "gemini" : "claude")).toLowerCase();
 const GEMINI_MODEL = Deno.env.get("GEMINI_MODEL") ?? "gemini-flash-latest";
 // Tried in order when a model has no free quota (429) or doesn't exist (404)
+// Total time we allow ourselves, safely under the Edge Function wall-clock limit
+// (otherwise Supabase kills the request and the app only sees a generic error)
+const AI_TIME_BUDGET_MS = Number(Deno.env.get("AI_TIME_BUDGET_MS") ?? "110000");
+const GEMINI_CALL_TIMEOUT_MS = Number(Deno.env.get("GEMINI_CALL_TIMEOUT_MS") ?? "90000");
+const MIN_ATTEMPT_MS = Math.min(15000, AI_TIME_BUDGET_MS * 0.15); // don't start an attempt with less time left
 const GEMINI_FALLBACK_MODELS = (Deno.env.get("GEMINI_FALLBACK_MODELS") ??
   "gemini-flash-lite-latest,gemini-2.5-flash,gemini-2.5-flash-lite")
   .split(",").map((m) => m.trim()).filter(Boolean);
@@ -260,13 +265,28 @@ class GeminiHttpError extends AiError {
   }
 }
 
-async function callGemini(model: string, body: unknown): Promise<GeminiResponse> {
+async function callGemini(model: string, body: unknown, deadline: number): Promise<GeminiResponse> {
   const url = `${GEMINI_BASE_URL}/v1beta/models/${encodeURIComponent(model)}:generateContent`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "x-goog-api-key": GEMINI_API_KEY },
-    body: JSON.stringify(body),
-  });
+  const remaining = deadline - Date.now();
+  if (remaining < MIN_ATTEMPT_MS / 3) throw new GeminiHttpError(504, `Out of time before calling ${model}`, 504, "out of time");
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), Math.min(GEMINI_CALL_TIMEOUT_MS, remaining));
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": GEMINI_API_KEY },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (controller.signal.aborted) {
+      throw new GeminiHttpError(504, `Gemini (${model}) took too long to answer`, 504, "timed out");
+    }
+    throw new GeminiHttpError(502, `Could not reach Gemini: ${err instanceof Error ? err.message : String(err)}`, 502, "network error");
+  } finally {
+    clearTimeout(timer);
+  }
   const data = (await res.json().catch(() => ({}))) as GeminiResponse;
   if (!res.ok) {
     const detail = (data.error?.message ?? `HTTP ${res.status}`).slice(0, 400);
@@ -314,7 +334,7 @@ function parseDraftJson(text: string): PilDraft | null {
 }
 
 /** One attempt with one model, with or without Google Search grounding. */
-async function geminiAttempt(model: string, request: string, withSearch: boolean) {
+async function geminiAttempt(model: string, request: string, withSearch: boolean, deadline: number) {
   const systemInstruction = {
     parts: [{
       text: SYSTEM_PROMPT.replace(/call the submit_pil tool exactly once with the complete leaflet\./, "reply with the complete leaflet.") +
@@ -327,7 +347,7 @@ async function geminiAttempt(model: string, request: string, withSearch: boolean
 
   if (withSearch) {
     // JSON is requested in the prompt: some models don't accept a response schema with the search tool
-    const data = await callGemini(model, { systemInstruction, contents, tools: [{ google_search: {} }] });
+    const data = await callGemini(model, { systemInstruction, contents, tools: [{ google_search: {} }] }, deadline);
     text = geminiText(data);
     for (const chunk of data.candidates?.[0]?.groundingMetadata?.groundingChunks ?? []) {
       if (chunk.web?.uri) foundSources.set(chunk.web.uri, chunk.web.title ?? chunk.web.uri);
@@ -344,7 +364,7 @@ async function geminiAttempt(model: string, request: string, withSearch: boolean
       systemInstruction,
       contents: followUp,
       generationConfig: { responseMimeType: "application/json", responseSchema: GEMINI_SCHEMA },
-    });
+    }, deadline);
     draft = parseDraftJson(geminiText(data));
   }
   if (!draft) throw new AiError(502, "The AI did not return a leaflet in the expected format. Please try again.");
@@ -356,6 +376,7 @@ async function generateWithGemini(request: string, useWebSearch: boolean): Promi
     throw new AiError(500, "The AI service is not configured yet (missing GEMINI_API_KEY secret).");
   }
   const models = [...new Set([GEMINI_MODEL, ...GEMINI_FALLBACK_MODELS])];
+  const deadline = Date.now() + AI_TIME_BUDGET_MS;
   const notes: string[] = [];
   let lastError: GeminiHttpError | null = null;
 
@@ -367,7 +388,8 @@ async function generateWithGemini(request: string, useWebSearch: boolean): Promi
     for (const withSearch of modes) {
       for (let tryNo = 0; tryNo < 2; tryNo++) {
         try {
-          const { draft, foundSources } = await geminiAttempt(model, request, withSearch);
+          if (deadline - Date.now() < MIN_ATTEMPT_MS) break; // not enough time left for another attempt
+          const { draft, foundSources } = await geminiAttempt(model, request, withSearch, deadline);
           if (useWebSearch && !withSearch) {
             notes.push("Web search was not available on this Gemini key, so the draft is based on general knowledge only - check product-specific details carefully.");
           }
@@ -377,6 +399,10 @@ async function generateWithGemini(request: string, useWebSearch: boolean): Promi
           if (!(err instanceof GeminiHttpError)) throw err; // invalid key, safety block, bad format
           lastError = err;
           console.warn(`Gemini attempt failed (model=${model}, search=${withSearch}, try=${tryNo + 1}): ${err.message}`);
+          if (err.httpStatus === 504) {
+            nextModel = true; // too slow: don't retry the same model
+            break;
+          }
           if (err.httpStatus >= 500 && tryNo === 0) {
             await new Promise((r) => setTimeout(r, 2000)); // overloaded: wait and retry once
             continue;
@@ -395,6 +421,9 @@ async function generateWithGemini(request: string, useWebSearch: boolean): Promi
     }
   }
 
+  if (lastError?.httpStatus === 504 || (!lastError && deadline - Date.now() < MIN_ATTEMPT_MS)) {
+    throw new AiError(504, "Gemini took too long to answer. Please try again, or untick \"Search the web\" for a faster draft.");
+  }
   if (lastError && lastError.httpStatus >= 500) {
     throw new AiError(503, `Gemini is busy right now (tried: ${models.join(", ")}). ` +
       `This is usually temporary - please try again in a few minutes. Google said: ${lastError.detail}`);
