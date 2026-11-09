@@ -358,6 +358,7 @@ function App() {
   const [editorReturnView, setEditorReturnView] = useState(null) // view to return to from the editor
   const [aiGenerated, setAiGenerated] = useState(false) // editor content came from the AI generator
   const [approvalChecked, setApprovalChecked] = useState(false) // "I reviewed and approve this PIL"
+  const [approvalPrompt, setApprovalPrompt] = useState(null) // null | 'save' | 'export' - approval dialog
   const [drugGroup, setDrugGroup] = useState('')
   const [drugGroups, setDrugGroups] = useState([])
   const [drugName, setDrugName] = useState('')
@@ -788,6 +789,15 @@ function App() {
     setCurrentView('editor')
   }
 
+  // Approval dialog confirmed (box ticked)
+  const handleApprovalConfirm = () => {
+    if (!approvalChecked) return
+    const action = approvalPrompt
+    setApprovalPrompt(null)
+    if (action === 'save') performSave()
+    else if (action === 'export') performExport()
+  }
+
   // Fill the editor with an AI-generated draft (must be approved before saving)
   const handleAiDraft = (draft) => {
     handleImportedDocument(draft)
@@ -1158,12 +1168,10 @@ function App() {
   };
 
   // ฟังก์ชันเซฟข้อมูล (Upsert with RBAC & Resource Ownership)
-  const handleSaveTemplate = async () => {
+  // Save: check the basics and permissions, then ask for approval in a dialog
+  const handleSaveTemplate = () => {
     if (isSaving) return
     if (!drugName) return alert("Please enter a medication name before saving.")
-    if (!approvalChecked) {
-      return alert('Please review the leaflet and tick "I have reviewed and approve this PIL" before saving.')
-    }
 
     // Security Gate: Check Permissions
     if (activeMedId) {
@@ -1184,6 +1192,12 @@ function App() {
       }
     }
 
+    setApprovalChecked(false)
+    setApprovalPrompt('save')
+  }
+
+  // Runs after the user ticked the approval box in the dialog
+  const performSave = async () => {
     const medData = {
       med_name: drugName,
       med_group: drugGroup,
@@ -1367,7 +1381,17 @@ function App() {
   const topics = PIL_TOPIC_NAMES
 
   // --- 7. PDF Export ---
+  // Export: signed-in editors approve first; guests (read-only) export directly
   const handleExportPDF = () => {
+    if (!currentUser || currentUser.isGuest || currentUser.role === ROLES.GUEST) {
+      performExport()
+      return
+    }
+    setApprovalChecked(false)
+    setApprovalPrompt('export')
+  }
+
+  const performExport = () => {
     try {
       const doc = generateMedicationPdfDoc({
         med_name: drugName,
@@ -3084,6 +3108,47 @@ function App() {
         )
       )}
 
+      {/* --- APPROVAL DIALOG (Save Template / Export PDF) --- */}
+      {approvalPrompt && (
+        <div className="approval-backdrop" onClick={() => setApprovalPrompt(null)}>
+          <div className="approval-card" role="dialog" aria-modal="true" aria-labelledby="approval-title" onClick={(e) => e.stopPropagation()}>
+            <h3 id="approval-title" className="approval-title">
+              {approvalPrompt === 'save' ? 'Review & approve before saving' : 'Review & approve before exporting'}
+            </h3>
+            <p className="approval-drug">{drugName || 'Untitled medication'}</p>
+            {(aiGenerated || activeMedDetails?.ai_generated) && (
+              <div className="pil-ai-banner">
+                <strong>AI-generated content.</strong> This leaflet was drafted by AI and may contain errors.
+                Make sure every section has been checked against reliable sources.
+              </div>
+            )}
+            <label className={`pil-approval-check ${approvalChecked ? 'checked' : ''}`}>
+              <input
+                type="checkbox"
+                checked={approvalChecked}
+                onChange={(e) => setApprovalChecked(e.target.checked)}
+                autoFocus
+              />
+              <span>
+                I, <strong>{currentUser?.name || currentUser?.email}</strong> ({currentUser?.role}), have reviewed and
+                approve this PIL{aiGenerated || activeMedDetails?.ai_generated ? ', including the AI-generated content' : ''}.
+              </span>
+            </label>
+            <div className="approval-actions">
+              <button className="approval-btn" onClick={() => setApprovalPrompt(null)}>Cancel</button>
+              <button
+                className="approval-btn primary"
+                onClick={handleApprovalConfirm}
+                disabled={!approvalChecked}
+                title={!approvalChecked ? 'Tick the approval box first' : ''}
+              >
+                {approvalPrompt === 'save' ? 'Approve & Save' : 'Approve & Export PDF'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* --- ADMIN USERS / MY WORK VIEW --- */}
       {!showLogin && currentView === 'admin_users' && canViewAdminPanel(currentUser) && (
         <UserActivityPanel
@@ -3145,8 +3210,8 @@ function App() {
                     <button
                       className={`btn-save-nav ${!canSave ? 'guarded-disabled' : ''}`}
                       onClick={handleSaveTemplate}
-                      disabled={!canSave || isSaving || !approvalChecked}
-                      title={!canSave ? denial?.en : (!approvalChecked ? 'Tick the approval box below to enable saving' : 'Save Template')}
+                      disabled={!canSave || isSaving}
+                      title={!canSave ? denial?.en : 'Save Template'}
                     >
                       {!canSave ? 'Save (Locked)' : (isSaving ? 'Saving...' : 'Save Template')}
                     </button>
@@ -3181,7 +3246,8 @@ function App() {
 
           {/* --- EDITOR CANVAS --- */}
           <main className="pil-editor-canvas">
-            {/* Permission Guard Notification Banner for Editor */}
+            {/* Notices above the document (permissions, AI content, last approval) */}
+            <div className="editor-notices">
             {(() => {
               const canSave = activeMedId
                 ? canEditLabel(currentUser, activeMedDetails)
@@ -3217,38 +3283,20 @@ function App() {
               )
             })()}
 
-            {/* AI draft warning + pharmacist approval (required before saving) */}
-            {(() => {
-              const canSave = activeMedId
-                ? canEditLabel(currentUser, activeMedDetails)
-                : (canCreateLabel(currentUser) && (currentUser?.role !== ROLES.PHARMACIST || canAccessMedicineCategory(currentUser, drugGroup)))
-              if (!canSave) return null
-              const lastApproval = activeMedDetails?.approved_by_name
-                ? `Last approved by ${activeMedDetails.approved_by_name}${activeMedDetails.approved_at ? ` on ${new Date(activeMedDetails.approved_at).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}` : ''}`
-                : null
-              return (
-                <div className="pil-approval-panel">
-                  {(aiGenerated || activeMedDetails?.ai_generated) && (
-                    <div className="pil-ai-banner">
-                      <strong>AI-generated content.</strong> This leaflet {aiGenerated ? 'was drafted' : 'was originally drafted'} by AI and may contain errors.
-                      Check every section against reliable sources before approving.
-                    </div>
-                  )}
-                  <label className={`pil-approval-check ${approvalChecked ? 'checked' : ''}`}>
-                    <input
-                      type="checkbox"
-                      checked={approvalChecked}
-                      onChange={(e) => setApprovalChecked(e.target.checked)}
-                    />
-                    <span>
-                      I, <strong>{currentUser?.name || currentUser?.email}</strong> ({currentUser?.role}), have reviewed and
-                      approve this PIL{aiGenerated || activeMedDetails?.ai_generated ? ', including the AI-generated content' : ''}.
-                    </span>
-                  </label>
-                  {lastApproval && <div className="pil-approval-last">{lastApproval}</div>}
-                </div>
-              )
-            })()}
+            {/* AI-content warning and last approval (approval itself happens in the Save / Export dialog) */}
+            {(aiGenerated || activeMedDetails?.ai_generated) && (
+              <div className="pil-ai-banner">
+                <strong>AI-generated content.</strong> This leaflet {aiGenerated ? 'was drafted' : 'was originally drafted'} by AI and may contain errors.
+                Check every section against reliable sources before approving.
+              </div>
+            )}
+            {activeMedDetails?.approved_by_name && (
+              <div className="pil-approval-last">
+                Last approved by {activeMedDetails.approved_by_name}
+                {activeMedDetails.approved_at ? ` on ${new Date(activeMedDetails.approved_at).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}` : ''}
+              </div>
+            )}
+            </div>
 
             <div className="pil-paper-shadow">
               <section className="pil-column">

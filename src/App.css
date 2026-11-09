@@ -170,9 +170,26 @@ body:has(.dedicated-pdf-page) {
 .pil-editor-canvas {
   flex: 1;
   display: flex;
+  flex-direction: column; /* notices on top, document below at full width */
   justify-content: center;
   align-items: center;
   padding: 10px;
+}
+
+.editor-notices {
+  width: 95vw;
+  display: grid;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.editor-notices:empty {
+  display: none;
+}
+
+.editor-notices .editor-ownership-status-bar {
+  max-width: none;
+  margin: 0;
 }
 
 .pil-paper-shadow {
@@ -2780,14 +2797,76 @@ body:has(.dedicated-pdf-page) {
   color: #dc2626;
 }
 
-/* --- PIL approval panel (editor) --- */
-.pil-approval-panel {
-  max-width: 980px;
-  margin: 0 auto 14px;
-  display: grid;
-  gap: 8px;
+/* --- Approval dialog (Save Template / Export PDF) --- */
+.approval-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
 }
 
+.approval-card {
+  width: min(560px, 100%);
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 22px 24px;
+  box-shadow: 0 24px 60px -12px rgba(15, 23, 42, 0.35);
+  display: grid;
+  gap: 12px;
+  font-family: 'Inter', 'Sarabun', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.approval-title {
+  margin: 0;
+  font-size: 18px;
+  color: #003399;
+}
+
+.approval-drug {
+  margin: -6px 0 0;
+  font-size: 14px;
+  color: #475569;
+}
+
+.approval-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.approval-btn {
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: #334155;
+  cursor: pointer;
+}
+
+.approval-btn.primary {
+  background: #059669;
+  border-color: #059669;
+  color: #ffffff;
+}
+
+.approval-btn.primary:hover:not(:disabled) {
+  background: #047857;
+}
+
+.approval-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* --- PIL approval panel (editor) --- */
 .pil-ai-banner {
   padding: 10px 16px;
   border-radius: 8px;
