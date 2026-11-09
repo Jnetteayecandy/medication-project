@@ -201,9 +201,46 @@ function cleanOcrText(text) {
     .join('\n')
 }
 
+/**
+ * Safari (before 18.x) can't iterate a ReadableStream with `for await`, which pdf.js uses
+ * internally. Add the standard async iterator when it's missing.
+ */
+function ensureReadableStreamIteration() {
+  if (typeof ReadableStream === 'undefined' || ReadableStream.prototype[Symbol.asyncIterator]) return
+  ReadableStream.prototype[Symbol.asyncIterator] = async function* streamIterator() {
+    const reader = this.getReader()
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) return
+        yield value
+      }
+    } finally {
+      reader.releaseLock()
+    }
+  }
+}
+
+// Read a page's text with an explicit reader loop (works in every browser)
+async function readPageText(page) {
+  const reader = page.streamTextContent().getReader()
+  let text = ''
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    for (const item of value.items) {
+      text += item.str || ''
+      if (item.hasEOL) text += '\n'
+    }
+  }
+  return text
+}
+
 async function extractFromPdf(file, onProgress) {
-  const pdfjs = await import('pdfjs-dist')
-  const workerUrl = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default
+  ensureReadableStreamIteration()
+  // Legacy build: extra compatibility for older Safari versions
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
+  const workerUrl = (await import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url')).default
   pdfjs.GlobalWorkerOptions.workerSrc = workerUrl
 
   const pdf = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise
@@ -212,13 +249,7 @@ async function extractFromPdf(file, onProgress) {
   for (let i = 1; i <= pdf.numPages; i++) {
     onProgress?.({ stage: `Reading PDF page ${i} of ${pdf.numPages}`, progress: (i - 1) / pdf.numPages })
     const page = await pdf.getPage(i)
-    const content = await page.getTextContent()
-
-    let pageText = ''
-    for (const item of content.items) {
-      pageText += item.str
-      if (item.hasEOL) pageText += '\n'
-    }
+    let pageText = await readPageText(page)
 
     // Scanned page (no text layer): render it and OCR it
     if (pageText.replace(/\s/g, '').length < 20) {
