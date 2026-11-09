@@ -37,6 +37,44 @@ ALTER TABLE IF EXISTS public.medication_templates
   ADD COLUMN IF NOT EXISTS qr_code_url TEXT,
   ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
 
+-- Every Supabase Auth account (e.g. Google sign-in) gets a profile, so the Admin page can
+-- list everyone and saves are attributed correctly. Existing profiles are never changed.
+DO $$
+BEGIN
+  INSERT INTO public.profiles (id, email, name, role)
+  SELECT u.id, COALESCE(u.email, u.id::TEXT || '@unknown.local'),
+         COALESCE(u.raw_user_meta_data->>'full_name', u.raw_user_meta_data->>'name', split_part(u.email, '@', 1)),
+         'STAFF'
+  FROM auth.users u
+  WHERE NOT EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = u.id)
+  ON CONFLICT DO NOTHING;
+EXCEPTION WHEN others THEN
+  RAISE NOTICE 'Profile backfill skipped: %', SQLERRM;
+END $$;
+
+CREATE OR REPLACE FUNCTION public.ensure_profile_for_new_user()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  INSERT INTO public.profiles (id, email, name, role)
+  VALUES (NEW.id, COALESCE(NEW.email, NEW.id::TEXT || '@unknown.local'),
+          COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.raw_user_meta_data->>'name', split_part(NEW.email, '@', 1)),
+          'STAFF')
+  ON CONFLICT DO NOTHING;
+  RETURN NEW;
+EXCEPTION WHEN others THEN
+  RETURN NEW; -- never block sign-up because of the profile
+END;
+$$;
+
+DROP TRIGGER IF EXISTS ensure_profile_on_auth_user_created ON auth.users;
+CREATE TRIGGER ensure_profile_on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.ensure_profile_for_new_user();
+
 -- ----------------------------------------------------------------------------
 -- 1. Permission helper: can `p_actor` write a label in `p_group` owned by `p_owner`?
 --    p_owner = NULL means "creating a new label".
@@ -52,7 +90,7 @@ DECLARE
   v_role TEXT;
   v_cats TEXT[];
 BEGIN
-  SELECT role, COALESCE(allowed_categories, '{}') INTO v_role, v_cats
+  SELECT UPPER(TRIM(COALESCE(role, 'STAFF'))), COALESCE(allowed_categories, '{}') INTO v_role, v_cats
   FROM public.profiles WHERE id = p_actor;
 
   IF NOT FOUND THEN RETURN FALSE; END IF;
@@ -86,7 +124,7 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  v_actor UUID := COALESCE(auth.uid(), p_user_id);
+  v_actor UUID;
   v_name TEXT;
   v_role TEXT;
   v_existing public.medication_templates;
@@ -94,10 +132,10 @@ DECLARE
   v_group TEXT;
   v_saved JSONB;
 BEGIN
-  SELECT COALESCE(name, email), role INTO v_name, v_role
-  FROM public.profiles WHERE id = v_actor;
-  IF NOT FOUND OR v_role NOT IN ('ADMIN', 'PHARMACIST', 'STAFF') THEN
-    RAISE EXCEPTION 'Permission denied: unknown user or read-only role';
+  SELECT actor_id, actor_name, actor_role INTO v_actor, v_name, v_role
+  FROM public.resolve_actor(p_user_id);
+  IF v_role NOT IN ('ADMIN', 'PHARMACIST', 'STAFF') THEN
+    RAISE EXCEPTION 'Permission denied: the "%" role is read-only', v_role;
   END IF;
 
   v_new := jsonb_populate_record(NULL::public.medication_templates, p_data);
@@ -165,15 +203,15 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  v_actor UUID := COALESCE(auth.uid(), p_user_id);
+  v_actor UUID;
   v_name TEXT;
   v_role TEXT;
   v_existing public.medication_templates;
 BEGIN
-  SELECT COALESCE(name, email), role INTO v_name, v_role
-  FROM public.profiles WHERE id = v_actor;
-  IF NOT FOUND OR v_role NOT IN ('ADMIN', 'PHARMACIST', 'STAFF') THEN
-    RAISE EXCEPTION 'Permission denied: unknown user or read-only role';
+  SELECT actor_id, actor_name, actor_role INTO v_actor, v_name, v_role
+  FROM public.resolve_actor(p_user_id);
+  IF v_role NOT IN ('ADMIN', 'PHARMACIST', 'STAFF') THEN
+    RAISE EXCEPTION 'Permission denied: the "%" role is read-only', v_role;
   END IF;
 
   SELECT * INTO v_existing FROM public.medication_templates WHERE id::TEXT = p_id;

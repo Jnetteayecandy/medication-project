@@ -74,7 +74,7 @@ SET search_path = public
 AS $$
   SELECT EXISTS (
     SELECT 1 FROM public.profiles
-    WHERE id = auth.uid() AND role = 'ADMIN'
+    WHERE id = auth.uid() AND UPPER(TRIM(role)) = 'ADMIN'
   );
 $$;
 
@@ -156,7 +156,7 @@ BEGIN
     END IF;
   END IF;
 
-  SELECT name, role INTO v_actor_name, v_actor_role
+  SELECT COALESCE(name, email), UPPER(TRIM(COALESCE(role, 'STAFF'))) INTO v_actor_name, v_actor_role
   FROM public.profiles WHERE id = v_actor_id;
 
   -- ไม่พบใน profiles ให้ใช้ข้อมูลจากแถวแทน และไม่ผูก FK
@@ -188,6 +188,57 @@ CREATE TRIGGER medication_templates_activity_log
   FOR EACH ROW EXECUTE FUNCTION public.log_medication_change();
 
 -- ----------------------------------------------------------------------------
+-- 6a. resolve_actor(): who is doing this, with which name/role?
+--     1) the Supabase Auth user (auth.uid()) if they have a profile
+--     2) else the app user id sent by the client (custom sign-in) if it has a profile
+--     3) else a signed-in Supabase Auth user without a profile (e.g. Google sign-in when
+--        the profile trigger was never installed) gets a STAFF profile created now
+--     Roles are compared case-insensitively; a missing role counts as STAFF.
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.resolve_actor(
+  p_user_id UUID,
+  OUT actor_id UUID,
+  OUT actor_name TEXT,
+  OUT actor_role TEXT
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_uid UUID := auth.uid();
+  v_email TEXT;
+  v_meta JSONB;
+BEGIN
+  IF v_uid IS NOT NULL THEN
+    SELECT p.id, COALESCE(p.name, p.email), UPPER(TRIM(COALESCE(p.role, 'STAFF')))
+      INTO actor_id, actor_name, actor_role
+      FROM public.profiles p WHERE p.id = v_uid;
+  END IF;
+
+  IF actor_id IS NULL AND p_user_id IS NOT NULL THEN
+    SELECT p.id, COALESCE(p.name, p.email), UPPER(TRIM(COALESCE(p.role, 'STAFF')))
+      INTO actor_id, actor_name, actor_role
+      FROM public.profiles p WHERE p.id = p_user_id;
+  END IF;
+
+  IF actor_id IS NULL AND v_uid IS NOT NULL THEN
+    SELECT u.email, u.raw_user_meta_data INTO v_email, v_meta FROM auth.users u WHERE u.id = v_uid;
+    actor_id := v_uid;
+    actor_name := COALESCE(v_meta->>'full_name', v_meta->>'name', split_part(v_email, '@', 1), 'User');
+    actor_role := 'STAFF';
+    INSERT INTO public.profiles (id, email, name, role)
+    VALUES (v_uid, COALESCE(v_email, v_uid::TEXT || '@unknown.local'), actor_name, 'STAFF')
+    ON CONFLICT (id) DO NOTHING;
+  END IF;
+
+  IF actor_id IS NULL THEN
+    RAISE EXCEPTION 'Permission denied: no profile found for this account (user id %). Sign out and sign in again, or ask an admin to add your profile.', COALESCE(p_user_id::TEXT, 'none');
+  END IF;
+END;
+$$;
+
+-- ----------------------------------------------------------------------------
 -- 6. RPC: log_activity() สำหรับ action ฝั่ง client (ลบ, export PDF, QR, login)
 --    - ถ้าล็อกอินผ่าน Supabase Auth: ใช้ auth.uid() เสมอ (ไม่สนใจ p_user_id)
 --    - ถ้าเป็น custom auth: ต้องส่ง p_user_id ที่มีอยู่จริงใน profiles และไม่ใช่ GUEST
@@ -207,7 +258,7 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  v_actor_id UUID := COALESCE(auth.uid(), p_user_id);
+  v_actor_id UUID;
   v_name TEXT;
   v_role TEXT;
 BEGIN
@@ -215,9 +266,10 @@ BEGIN
     RAISE EXCEPTION 'action "%" is not allowed from client', p_action;
   END IF;
 
-  SELECT name, role INTO v_name, v_role FROM public.profiles WHERE id = v_actor_id;
-  IF NOT FOUND OR v_role = 'GUEST' THEN
-    RAISE EXCEPTION 'unknown or guest user cannot write activity logs';
+  SELECT actor_id, actor_name, actor_role INTO v_actor_id, v_name, v_role
+  FROM public.resolve_actor(p_user_id);
+  IF v_role = 'GUEST' THEN
+    RAISE EXCEPTION 'guest users cannot write activity logs';
   END IF;
 
   INSERT INTO public.activity_logs
