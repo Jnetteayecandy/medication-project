@@ -365,7 +365,7 @@ export function AuthProvider({ children }) {
     }
 
     if (existingUser) {
-      throw new Error('Username นี้มีผู้ใช้งานแล้ว กรุณาเลือก Username อื่น')
+      throw new Error('This username is already taken. Please choose another one.')
     }
 
     // 2. ทำการบันทึก (Insert) บัญชีใหม่ลงในตาราง auth

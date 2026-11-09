@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
-import { generateMedicationPdfDoc } from '../utils/pdfGenerator'
+import { generateMedicationPdfDoc, parseSectionContent } from '../utils/pdfGenerator'
 import './DedicatedPdfView.css'
 
 export default function DedicatedPdfView({
@@ -7,6 +7,7 @@ export default function DedicatedPdfView({
   loading,
   error,
   onBackToHome,
+  onBack,
   topics
 }) {
   const [activeTab, setActiveTab] = useState('mobile_view') // 'mobile_view' | 'pdf_preview'
@@ -48,7 +49,7 @@ export default function DedicatedPdfView({
   // Download PDF file directly
   const handleDownloadPdf = () => {
     if (pdfInstance) {
-      pdfInstance.save(`ฉลากยา_${drug?.med_name || 'PIL'}.pdf`)
+      pdfInstance.save(`PIL_${drug?.med_name || 'Medication'}.pdf`)
     }
   }
 
@@ -57,8 +58,8 @@ export default function DedicatedPdfView({
     const url = window.location.href
     if (navigator.share) {
       navigator.share({
-        title: `ฉลากยา: ${drug?.med_name || 'Medication'}`,
-        text: `เอกสารกำกับยาสำหรับผู้ป่วย: ${drug?.med_name || ''}`,
+        title: `PIL: ${drug?.med_name || 'Medication'}`,
+        text: `Patient Information Leaflet: ${drug?.med_name || ''}`,
         url: url
       }).catch(() => {
         // User dismissed share dialog
@@ -69,7 +70,7 @@ export default function DedicatedPdfView({
         setTimeout(() => setCopiedLink(false), 2200)
       })
     } else {
-      prompt('คัดลอกลิงก์นี้:', url)
+      prompt('Copy this link:', url)
     }
   }
 
@@ -79,8 +80,8 @@ export default function DedicatedPdfView({
       <div className="dedicated-pdf-page">
         <div className="dedicated-state-container">
           <div className="dedicated-spinner"></div>
-          <h2 className="dedicated-state-title">กำลังโหลดเอกสารฉลากยา...</h2>
-          <p className="dedicated-state-desc">Patient Information Leaflet (PIL) · กำลังดึงข้อมูลจากระบบฐานข้อมูลกลาง</p>
+          <h2 className="dedicated-state-title">Loading medication leaflet...</h2>
+          <p className="dedicated-state-desc">Patient Information Leaflet (PIL) · Fetching data from the database</p>
         </div>
       </div>
     )
@@ -98,12 +99,12 @@ export default function DedicatedPdfView({
               <line x1="12" y1="16" x2="12.01" y2="16"></line>
             </svg>
           </div>
-          <h2 className="dedicated-state-title">ไม่พบเอกสารฉลากยานี้ในระบบ</h2>
+          <h2 className="dedicated-state-title">Medication leaflet not found</h2>
           <p className="dedicated-state-desc">
-            {error || 'รหัสยาไม่ถูกต้อง หรือเอกสารอาจถูกปรับปรุง กรุณากลับสู่หน้าหลักเพื่อค้นหาข้อมูลยา'}
+            {error || 'The medication ID is invalid or the document has been updated. Please go back to the home page to search again.'}
           </p>
           <button className="dedicated-btn-retry" onClick={onBackToHome}>
-            กลับหน้าหลัก (Back to Home)
+            Back to Home
           </button>
         </div>
       </div>
@@ -117,13 +118,24 @@ export default function DedicatedPdfView({
       {/* --- Minimalist Sticky Header --- */}
       <header className="dedicated-pdf-header">
         <div className="dedicated-header-left">
+          <button
+            className="dedicated-back-btn"
+            onClick={onBack || onBackToHome}
+            title="Back to previous page"
+            aria-label="Back"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="15 18 9 12 15 6"></polyline>
+            </svg>
+            <span>Back</span>
+          </button>
           <div className="dedicated-logo-badge">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
             </svg>
           </div>
           <div className="dedicated-header-titles">
-            <div className="dedicated-header-app-title">เอกสารกำกับยาสำหรับผู้ป่วย</div>
+            <div className="dedicated-header-app-title">Patient Medication Leaflet</div>
             <div className="dedicated-header-sub-title">Patient Information Leaflet (PIL)</div>
           </div>
         </div>
@@ -138,7 +150,7 @@ export default function DedicatedPdfView({
               <rect width="14" height="20" x="5" y="2" rx="2" ry="2" />
               <path d="M12 18h.01" />
             </svg>
-            <span>อ่านบนมือถือ</span>
+            <span>Mobile View</span>
           </button>
           <button
             className={`mode-tab-btn ${activeTab === 'pdf_preview' ? 'active' : ''}`}
@@ -151,7 +163,7 @@ export default function DedicatedPdfView({
               <line x1="16" y1="17" x2="8" y2="17" />
               <polyline points="10 9 9 9 8 9" />
             </svg>
-            <span>เอกสาร PDF</span>
+            <span>PDF Document</span>
           </button>
         </div>
       </header>
@@ -163,7 +175,7 @@ export default function DedicatedPdfView({
           <div className="dedicated-paper-card">
             {/* Drug Identification Box */}
             <div className="dedicated-drug-box">
-              <div className="dedicated-drug-name">{drug.med_name || 'ชื่อยา'}</div>
+              <div className="dedicated-drug-name">{drug.med_name || 'Medication name'}</div>
               <div className="dedicated-drug-meta-row">
                 {drug.med_group && <span className="dedicated-badge-group">{drug.med_group}</span>}
                 {drug.med_type && <span className="dedicated-badge-type">{drug.med_type}</span>}
@@ -175,14 +187,15 @@ export default function DedicatedPdfView({
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="20 6 9 17 4 12"></polyline>
               </svg>
-              <span>ข้อมูลทางการแพทย์ ได้รับการตรวจสอบตามมาตรฐาน คณะเภสัชศาสตร์ ม.อ.</span>
+              <span>Medical information reviewed to the standards of the Faculty of Pharmaceutical Sciences, PSU</span>
             </div>
 
             {/* 7 Standard Clinical Topics */}
             <div className="dedicated-topics-list">
               {[1, 2, 3, 4, 5, 6, 7].map((num) => {
-                const text = contents[num] || ''
-                const lines = text.trim().split('\n').filter(l => l.trim())
+                // Same parsing as the PDF: strips duplicate bullets, re-joins broken lines,
+                // repairs Thai marks, and marks "2.1"-style sub-headings
+                const items = parseSectionContent(contents[num] || '')
 
                 return (
                   <div key={num} className="dedicated-topic-card">
@@ -190,17 +203,23 @@ export default function DedicatedPdfView({
                       <span>{topics[num]}</span>
                     </div>
                     <div className="dedicated-topic-body">
-                      {lines.length > 0 ? (
+                      {items.length > 0 ? (
                         <ul className="dedicated-bullet-list">
-                          {lines.map((line, idx) => (
-                            <li key={idx} className="dedicated-bullet-item">
-                              <span className="dedicated-bullet-dot">•</span>
-                              <span>{line.trim()}</span>
-                            </li>
+                          {items.map((item, idx) => (
+                            item.type === 'sub' ? (
+                              <li key={idx} className="dedicated-bullet-item dedicated-sub-heading">
+                                <span>{item.text}</span>
+                              </li>
+                            ) : (
+                              <li key={idx} className="dedicated-bullet-item">
+                                <span className="dedicated-bullet-dot">•</span>
+                                <span>{item.text}</span>
+                              </li>
+                            )
                           ))}
                         </ul>
                       ) : (
-                        <span className="dedicated-empty-content">- ไม่มีข้อมูลระบุ -</span>
+                        <span className="dedicated-empty-content">- No information -</span>
                       )}
                     </div>
                   </div>
@@ -224,7 +243,7 @@ export default function DedicatedPdfView({
                 </svg>
                 PSU · Prince of Songkla University
               </span>
-              <span>Patient Information Leaflet (PIL) · Last Updated: {drug.updated_at ? new Date(drug.updated_at).toLocaleDateString('th-TH') : 'ล่าสุด'}</span>
+              <span>Patient Information Leaflet (PIL) · Last Updated: {drug.updated_at ? new Date(drug.updated_at).toLocaleDateString('en-GB') : '-'}</span>
             </footer>
           </div>
         ) : (
@@ -233,7 +252,7 @@ export default function DedicatedPdfView({
             {generatingPdf ? (
               <div className="dedicated-state-container">
                 <div className="dedicated-spinner"></div>
-                <p>กำลังเตรียมไฟล์ PDF...</p>
+                <p>Preparing PDF...</p>
               </div>
             ) : pdfBlobUrl ? (
               <iframe
@@ -243,7 +262,7 @@ export default function DedicatedPdfView({
               />
             ) : (
               <div className="dedicated-state-container">
-                <p>ไม่สามารถสร้างการแสดงผลไฟล์ PDF ได้</p>
+                <p>Unable to display the PDF.</p>
               </div>
             )}
           </div>
@@ -255,33 +274,33 @@ export default function DedicatedPdfView({
         <button
           className="fab-btn-download"
           onClick={handleDownloadPdf}
-          title="ดาวน์โหลดเอกสาร PDF ลงในเครื่อง"
+          title="Download the PDF to your device"
         >
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
             <polyline points="7 10 12 15 17 10"></polyline>
             <line x1="12" y1="15" x2="12" y2="3"></line>
           </svg>
-          <span>ดาวน์โหลด PDF</span>
+          <span>Download PDF</span>
         </button>
 
         <button
           className="fab-btn-home"
           onClick={onBackToHome}
-          title="ค้นหายาตัวอื่น หรือกลับหน้าหลัก"
+          title="Go to the home page"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
             <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
             <polyline points="9 22 9 12 15 12 15 22"></polyline>
           </svg>
-          <span>หน้าหลัก</span>
+          <span>Home</span>
         </button>
 
         <button
           className={`fab-btn-share ${copiedLink ? 'copied' : ''}`}
           onClick={handleShareLink}
-          title="คัดลอกลิงก์หรือแชร์ฉลากยา"
-          aria-label="แชร์ลิงก์"
+          title="Copy or share the link"
+          aria-label="Share link"
         >
           {copiedLink ? (
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">

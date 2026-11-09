@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf'
 import { sarabunBase64 } from '../thaiFont'
 import { supabase } from '../supabaseClient'
+import { normalizeThaiText } from './documentImport'
 
 /**
  * ============================================================================
@@ -105,7 +106,7 @@ function joinContinuation(prev, next) {
  */
 export function parseSectionContent(text) {
   if (!text || !text.trim()) return []
-  const rawLines = text.replace(ZERO_WIDTH_RE, '').replace(/\r/g, '').split('\n').filter(l => l.trim())
+  const rawLines = normalizeThaiText(text).replace(ZERO_WIDTH_RE, '').replace(/\r/g, '').split('\n').filter(l => l.trim())
   const usesMarkers = rawLines.some(l => BULLET_START_RE.test(l))
   const items = []
 
@@ -148,7 +149,7 @@ export function generateMedicationPdfDoc(drug, topics = PIL_TOPIC_NAMES) {
   const FOOTER_H = 16
   const FOOTER_Y = PH - MARGIN - FOOTER_H
 
-  const medName = drug?.med_name || drug?.drugName || 'ชื่อยา'
+  const medName = normalizeThaiText(drug?.med_name || drug?.drugName || 'ชื่อยา')
   const medGroup = drug?.med_group || drug?.drugGroup || ''
   const medType = drug?.med_type || drug?.drugType || 'ใส่ชนิดยา'
   const contents = drug?.contents || Array(8).fill('')

@@ -132,12 +132,12 @@ export function getPermissionDenialReason(user, action = 'edit', label = null) {
   if (user.role === ROLES.GUEST) {
     return {
       th: 'ผู้เยี่ยมชม (Guest): สิทธิ์อ่านอย่างเดียว ไม่สามารถสร้าง แก้ไข หรือลบข้อมูลได้',
-      en: 'Guest Role: Strictly Read-Only. Mutation is prohibited.'
+      en: 'Guest accounts are read-only and cannot create, edit or delete data.'
     }
   }
 
   if (user.role === ROLES.PHARMACIST) {
-    const groupName = label?.med_group || 'หมวดหมู่นี้'
+    const groupName = label?.med_group || 'this category'
     return {
       th: `เภสัชกร: ไม่มีสิทธิ์ในหมวดยา "${groupName}" (จัดการได้เฉพาะหมวดที่ได้รับอนุญาต)`,
       en: `Pharmacist Role: Not authorized for category "${groupName}". Allowed categories: ${user.allowedCategories?.join(', ') || 'None'}`
