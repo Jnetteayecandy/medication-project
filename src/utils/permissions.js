@@ -94,6 +94,23 @@ export function canManageSystemTopics(user) {
 }
 
 /**
+ * Check if the user can open the Admin panel (view every user's labels and activity history).
+ * UI guard only: Supabase RLS (`is_admin()`) enforces the real restriction on `activity_logs`.
+ */
+export function canViewAdminPanel(user) {
+  if (!user || user.isGuest) return false
+  return user.role === ROLES.ADMIN
+}
+
+/**
+ * Check if the user can open their own "My Work" page.
+ */
+export function canViewOwnActivity(user) {
+  if (!user || user.isGuest || user.role === ROLES.GUEST) return false
+  return true
+}
+
+/**
  * Check if the user owns a specific label (created it themselves).
  */
 export function isLabelOwner(user, label) {
@@ -115,12 +132,12 @@ export function getPermissionDenialReason(user, action = 'edit', label = null) {
   if (user.role === ROLES.GUEST) {
     return {
       th: 'ผู้เยี่ยมชม (Guest): สิทธิ์อ่านอย่างเดียว ไม่สามารถสร้าง แก้ไข หรือลบข้อมูลได้',
-      en: 'Guest Role: Strictly Read-Only. Mutation is prohibited.'
+      en: 'Guest accounts are read-only and cannot create, edit or delete data.'
     }
   }
 
   if (user.role === ROLES.PHARMACIST) {
-    const groupName = label?.med_group || 'หมวดหมู่นี้'
+    const groupName = label?.med_group || 'this category'
     return {
       th: `เภสัชกร: ไม่มีสิทธิ์ในหมวดยา "${groupName}" (จัดการได้เฉพาะหมวดที่ได้รับอนุญาต)`,
       en: `Pharmacist Role: Not authorized for category "${groupName}". Allowed categories: ${user.allowedCategories?.join(', ') || 'None'}`

@@ -1,0 +1,536 @@
+/* ============================================================================
+   User Activity Panel (Admin users / My work)
+   ============================================================================ */
+.uap-page {
+  min-height: 100vh;
+  background: #f8fafc;
+  font-family: 'Inter', 'Sarabun', -apple-system, BlinkMacSystemFont, sans-serif;
+  color: #0f172a;
+}
+
+.uap-header {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 18px 32px;
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.uap-back-btn,
+.uap-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #334155;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  white-space: nowrap;
+}
+
+.uap-back-btn:hover,
+.uap-btn:hover:not(:disabled) {
+  border-color: #93c5fd;
+  color: #1d4ed8;
+}
+
+.uap-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.uap-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: #003399;
+}
+
+.uap-subtitle {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.uap-main {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+}
+
+.uap-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+}
+
+.uap-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.uap-input,
+.uap-select {
+  padding: 8px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  font: inherit;
+  font-size: 14px;
+  background: #ffffff;
+  color: #0f172a;
+}
+
+.uap-toolbar .uap-input[type='search'] {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.uap-input:focus,
+.uap-select:focus {
+  outline: none;
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.uap-date-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #475569;
+}
+
+.uap-warning,
+.uap-error {
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  margin-bottom: 14px;
+}
+
+.uap-warning {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #92400e;
+}
+
+.uap-error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+}
+
+.uap-empty {
+  padding: 36px 12px;
+  text-align: center;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.uap-hint {
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.uap-muted {
+  color: #64748b;
+  font-size: 13px;
+}
+
+/* --- User table --- */
+.uap-table-wrap {
+  overflow-x: auto;
+}
+
+.uap-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.uap-table th {
+  text-align: left;
+  font-weight: 600;
+  color: #475569;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 10px 12px;
+  border-bottom: 1px solid #e2e8f0;
+  white-space: nowrap;
+}
+
+.uap-table td {
+  padding: 12px;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+}
+
+.uap-num {
+  text-align: right !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.uap-row {
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.uap-row:hover,
+.uap-row:focus {
+  background: #f8fafc;
+  outline: none;
+}
+
+.uap-user-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.uap-user-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.uap-user-name {
+  font-weight: 600;
+}
+
+.uap-user-email {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.uap-avatar {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.uap-avatar-lg {
+  width: 56px;
+  height: 56px;
+  font-size: 22px;
+}
+
+.uap-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* --- Profile header & tabs --- */
+.uap-profile-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.uap-profile-name {
+  margin: 0;
+  font-size: 18px;
+}
+
+.uap-profile-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.uap-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid #e2e8f0;
+  margin-bottom: 16px;
+}
+
+.uap-tab {
+  padding: 10px 16px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+  margin-bottom: -1px;
+}
+
+.uap-tab.active {
+  color: #1d4ed8;
+  border-bottom-color: #2563eb;
+}
+
+/* --- Labels --- */
+.uap-label-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.uap-label-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.uap-label-actions {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+}
+
+.uap-label-actions .uap-btn {
+  justify-content: center;
+  min-width: 72px;
+}
+
+.uap-btn-primary {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #ffffff;
+}
+
+.uap-btn-primary:hover:not(:disabled) {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+  color: #ffffff !important;
+}
+
+.uap-label-item {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #ffffff;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.uap-label-item:hover {
+  border-color: #93c5fd;
+  box-shadow: 0 6px 18px -6px rgba(37, 99, 235, 0.18);
+}
+
+.uap-label-main,
+.uap-label-side {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.uap-label-side {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.uap-label-name {
+  font-weight: 600;
+  color: #0f172a;
+}
+
+/* --- Timeline --- */
+.uap-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 6px;
+  border-left: 2px solid #e2e8f0;
+}
+
+.uap-timeline-item {
+  position: relative;
+  padding: 0 0 18px 20px;
+}
+
+.uap-dot {
+  position: absolute;
+  left: -7px;
+  top: 6px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+}
+
+.uap-timeline-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.uap-timeline-target {
+  font-weight: 600;
+}
+
+.uap-timeline-time {
+  margin-left: auto;
+}
+
+.uap-link-btn {
+  margin-top: 6px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #2563eb;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.uap-link-btn:hover {
+  text-decoration: underline;
+}
+
+.uap-diff-list {
+  margin-top: 8px;
+  display: grid;
+  gap: 10px;
+}
+
+.uap-diff {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #f8fafc;
+}
+
+.uap-diff-label {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.uap-diff-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.uap-diff-old,
+.uap-diff-new {
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  min-width: 0;
+}
+
+.uap-diff-old {
+  background: #fef2f2;
+}
+
+.uap-diff-new {
+  background: #ecfdf5;
+}
+
+.uap-diff-old span,
+.uap-diff-new span {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+  margin-bottom: 2px;
+}
+
+.uap-diff-old p,
+.uap-diff-new p {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.uap-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+@media (max-width: 640px) {
+  .uap-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 14px 16px;
+  }
+
+  .uap-card {
+    padding: 14px;
+  }
+
+  .uap-diff-cols {
+    grid-template-columns: 1fr;
+  }
+
+  .uap-label-item {
+    flex-direction: column;
+  }
+
+  .uap-label-row {
+    flex-direction: column;
+  }
+
+  .uap-label-actions {
+    flex-direction: row;
+  }
+
+  .uap-label-actions .uap-btn {
+    flex: 1;
+  }
+
+  .uap-label-side {
+    align-items: flex-start;
+    text-align: left;
+  }
+
+  .uap-timeline-time {
+    margin-left: 0;
+    width: 100%;
+  }
+}
+
+.uap-label-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: flex-end;
+  margin-top: 2px;
+}

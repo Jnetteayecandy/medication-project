@@ -8,6 +8,8 @@ import {
   canDeleteLabel,
   canAccessMedicineCategory,
   canManageSystemTopics,
+  canViewAdminPanel,
+  canViewOwnActivity,
   isLabelOwner,
   getPermissionDenialReason
 } from './utils/permissions'
@@ -27,6 +29,11 @@ import {
 import DedicatedPdfView from './components/DedicatedPdfView'
 import CompleteProfile from './components/CompleteProfile'
 import GuidedTour from './components/GuidedTour'
+import UserActivityPanel from './components/UserActivityPanel'
+import ImportDocumentModal from './components/ImportDocumentModal'
+import AiGenerateModal from './components/AiGenerateModal'
+import { logActivity } from './utils/activityLogger'
+import { saveMedication, deleteMedication, withTimeout } from './utils/medicationStore'
 
 // Initial default manage data matching mockup
 const DEFAULT_MANAGE_DATA = {
@@ -111,23 +118,23 @@ const TOPIC_CATEGORIES = [
 
 const TOPIC_SUB_OPTIONS = {
   topic1: [
-    { value: '111', label: '111 - ข้อมูลระบุตัวยา/กลุ่มยา' },
-    { value: '112', label: '112 - กลุ่มยาต้านอักเสบ' },
-    { value: '12', label: '12 - ข้อบ่งใช้/สรรพคุณ' }
+    { value: '111', label: '111 - Drug identity / drug group' },
+    { value: '112', label: '112 - Anti-inflammatory group' },
+    { value: '12', label: '12 - Indications / uses' }
   ],
   topic2: [
-    { value: '21', label: '21 - ข้อห้ามใช้เด็ดขาด' },
-    { value: '22', label: '22 - ข้อควรระวังก่อนใช้ยา' }
+    { value: '21', label: '21 - Absolute contraindications' },
+    { value: '22', label: '22 - Precautions before use' }
   ],
   topic3: [
-    { value: '31', label: '31 - วิธีรับประทาน/ขนาดยา' },
-    { value: '32', label: '32 - กรณีลืมรับประทานยา' },
-    { value: '33', label: '33 - สังเกตอาการผิดปกติรุนแรง' }
+    { value: '31', label: '31 - How to take / dosage' },
+    { value: '32', label: '32 - Missed dose' },
+    { value: '33', label: '33 - Watch for serious symptoms' }
   ],
   topic4: [], // ไม่มี sub_topic
   topic5: [
-    { value: '51', label: '51 - ผลข้างเคียงรุนแรงที่ต้องพบแพทย์ทันที' },
-    { value: '52', label: '52 - ผลข้างเคียงทั่วไปที่ไม่รุนแรง' }
+    { value: '51', label: '51 - Serious side effects (see a doctor now)' },
+    { value: '52', label: '52 - Common mild side effects' }
   ],
   topic6: [], // ไม่มี sub_topic
   topic7: []  // ไม่มี sub_topic
@@ -309,7 +316,7 @@ function App() {
   const [signupSubmitting, setSignupSubmitting] = useState(false)
 
   // --- 2. Navigation State ---
-  const [currentView, setCurrentView] = useState('dashboard') // 'dashboard' | 'editor' | 'manage_data'
+  const [currentView, setCurrentView] = useState('dashboard') // 'dashboard' | 'editor' | 'manage_data' | 'admin_users' | 'my_work'
   const [activeModal, setActiveModal] = useState(null) // null | 'import_word' | 'join_code'
   const [joinCode, setJoinCode] = useState('')
 
@@ -347,6 +354,11 @@ function App() {
   // --- 3. Project State ---
   const [activeMedId, setActiveMedId] = useState(null) // เก็บ ID ยาที่กำลังแก้ไข
   const [activeMedDetails, setActiveMedDetails] = useState(null) // เก็บ Object ข้อมูลยาที่กำลังแก้ไขสำหรับตรวจ Ownership
+  const [isSaving, setIsSaving] = useState(false)
+  const [editorReturnView, setEditorReturnView] = useState(null) // view to return to from the editor
+  const [aiGenerated, setAiGenerated] = useState(false) // editor content came from the AI generator
+  const [approvalChecked, setApprovalChecked] = useState(false) // "I reviewed and approve this PIL"
+  const [approvalPrompt, setApprovalPrompt] = useState(null) // null | 'save' | 'export' - approval dialog
   const [drugGroup, setDrugGroup] = useState('')
   const [drugGroups, setDrugGroups] = useState([])
   const [drugName, setDrugName] = useState('')
@@ -472,13 +484,13 @@ function App() {
 
           if (error) throw error
           if (!data) {
-            setPdfViewError('ไม่พบเอกสารฉลากยานี้ในระบบฐานข้อมูล')
+            setPdfViewError('This medication leaflet was not found in the database.')
           } else {
             setPdfViewDrug(data)
           }
         } catch (err) {
           console.error('Fetch PDF view error:', err)
-          setPdfViewError(err.message || 'เกิดข้อผิดพลาดในการโหลดเอกสาร')
+          setPdfViewError(err.message || 'An error occurred while loading the document.')
         } finally {
           setPdfViewLoading(false)
         }
@@ -530,7 +542,7 @@ function App() {
 
           if (error) throw error
           if (!data) {
-            setDirectPdfError('ไม่พบเอกสารฉลากยานี้ในระบบฐานข้อมูล')
+            setDirectPdfError('This medication leaflet was not found in the database.')
             return
           }
 
@@ -544,10 +556,10 @@ function App() {
           const pdfBlob = generateMedicationPdfBlob(data, PIL_TOPIC_NAMES)
           const blobUrl = URL.createObjectURL(pdfBlob)
 
-          const cleanName = (data.med_name || 'เอกสารฉลากยา').replace(/[^a-zA-Z0-9_\u0E00-\u0E7F-]/g, '_')
+          const cleanName = (data.med_name || 'Medication_Leaflet').replace(/[^a-zA-Z0-9_\u0E00-\u0E7F-]/g, '_')
           const link = document.createElement('a')
           link.href = blobUrl
-          link.download = `ฉลากยา_${cleanName}.pdf`
+          link.download = `PIL_${cleanName}.pdf`
           document.body.appendChild(link)
           link.click()
           document.body.removeChild(link)
@@ -561,7 +573,7 @@ function App() {
           }, 300)
         } catch (err) {
           console.error('Direct PDF error:', err)
-          setDirectPdfError(err.message || 'เกิดข้อผิดพลาดในการโหลดไฟล์ PDF')
+          setDirectPdfError(err.message || 'An error occurred while loading the PDF.')
         } finally {
           setDirectPdfLoading(false)
         }
@@ -623,6 +635,8 @@ function App() {
     setContents(med.contents || Array(8).fill(''))
     setMedSuggestions([])
     setShowMedSuggestions(false)
+    setAiGenerated(false)
+    setApprovalChecked(false)
   }
 
   // --- 5. Auth Handlers ---
@@ -631,7 +645,9 @@ function App() {
     if (loginSubmitting) return
     setLoginSubmitting(true)
     try {
-      await login(email, password)
+      const loginResult = await login(email, password)
+      const loggedInUser = loginResult?.data?.user
+      if (loggedInUser) logActivity(loggedInUser, { action: 'login' })
       setShowLogin(false)
       setCurrentView('dashboard')
       setEmail('')
@@ -761,13 +777,58 @@ function App() {
   }
 
   // --- 6. Navigation Actions ---
+  // Open a saved label in the editor (from My Work / User Management)
+  const handleEditLabelFromPanel = (med) => {
+    if (!canEditLabel(currentUser, med)) {
+      const denial = getPermissionDenialReason(currentUser, 'edit', med)
+      alert(`Access Denied:\n${denial.en}`)
+      return
+    }
+    selectMedTemplate(med)
+    setEditorReturnView(currentView)
+    setCurrentView('editor')
+  }
+
+  // Approval dialog confirmed (box ticked)
+  const handleApprovalConfirm = () => {
+    if (!approvalChecked) return
+    const action = approvalPrompt
+    setApprovalPrompt(null)
+    if (action === 'save') performSave()
+    else if (action === 'export') performExport()
+  }
+
+  // Fill the editor with an AI-generated draft (must be approved before saving)
+  const handleAiDraft = (draft) => {
+    handleImportedDocument(draft)
+    setAiGenerated(true)
+  }
+
+  // Fill the editor with text imported from an image / PDF / Word file
+  const handleImportedDocument = (doc) => {
+    handleClearAll(null, true)
+    setDrugName(doc.med_name || '')
+    setDrugType(doc.med_type || '')
+    const imported = Array(8).fill('')
+    ;(doc.contents || []).forEach((c, i) => { if (i < 8) imported[i] = c || '' })
+    setContents(imported)
+    setActiveModal(null)
+    setEditorReturnView(null)
+    setCurrentView('editor')
+  }
+
   const handleStartNewDoc = () => {
     handleClearAll(null, true) // เคลียร์ฟอร์มเตรียมพร้อมสำหรับเอกสารใหม่
+    setEditorReturnView(null)
     setCurrentView('editor')
   }
 
   const handleBackToDashboard = () => {
-    if (currentUser?.isGuest) {
+    if (editorReturnView) {
+      // Opened from My Work / User Management: go back there
+      setCurrentView(editorReturnView)
+      setEditorReturnView(null)
+    } else if (currentUser?.isGuest) {
       setCurrentView('manage_data')
     } else {
       setCurrentView('dashboard')
@@ -823,7 +884,7 @@ function App() {
 
   const handleSaveTopicEdit = async (topicTable, id, newName) => {
     if (currentUser?.isGuest) {
-      alert('Access Denied (สิทธิ์ไม่เพียงพอ):\nผู้เยี่ยมชม (Guest) ไม่สามารถแก้ไขข้อมูลได้')
+      alert('Access Denied:\nGuest accounts cannot edit data.')
       return
     }
     if (!newName.trim()) {
@@ -861,13 +922,13 @@ function App() {
 
   const handleAddTopicItem = async (topicTable, name) => {
     if (currentUser?.isGuest) {
-      alert('Access Denied (สิทธิ์ไม่เพียงพอ):\nผู้เยี่ยมชม (Guest) ไม่สามารถเพิ่มข้อมูลได้')
+      alert('Access Denied:\nGuest accounts cannot add data.')
       return
     }
 
     const inputValue = (name !== undefined ? name : manageNewItemInput || '').trim()
     if (!inputValue) {
-      alert('กรุณากรอกข้อความก่อนกดเพิ่มข้อมูล (Please enter text before adding)')
+      alert('Please enter text before adding.')
       return
     }
 
@@ -935,7 +996,7 @@ function App() {
       }
     } catch (err) {
       console.error(`Failed to add item to ${currentTopicTable}:`, err)
-      alert(`ไม่สามารถบันทึกข้อมูลลงตาราง ${currentTopicTable} ได้:\n${err.message || err}`)
+      alert(`Could not save to table ${currentTopicTable}:\n${err.message || err}`)
     } finally {
       setIsLoadingTopic(false)
     }
@@ -943,7 +1004,7 @@ function App() {
 
   const handleDeleteTopicItem = async (topicTable, id, name) => {
     if (currentUser?.isGuest) {
-      alert('Access Denied (สิทธิ์ไม่เพียงพอ):\nผู้เยี่ยมชม (Guest) ไม่สามารถลบข้อมูลได้')
+      alert('Access Denied:\nGuest accounts cannot delete data.')
       return
     }
     if (!window.confirm(`Are you sure you want to delete this item from ${topicTable}?\n"${name.slice(0, 80)}${name.length > 80 ? '...' : ''}"`)) return
@@ -991,7 +1052,7 @@ function App() {
 
   const handleAddManageItem = () => {
     if (!canManageSystemTopics(currentUser)) {
-      alert('Access Denied (สิทธิ์ไม่เพียงพอ):\nเฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่สามารถเพิ่มข้อมูลระบบได้')
+      alert('Access Denied:\nOnly administrators can add system data.')
       return
     }
     if (!manageNewItemInput.trim()) return
@@ -1015,7 +1076,7 @@ function App() {
 
   const handleDeleteManageItem = (id) => {
     if (!canManageSystemTopics(currentUser)) {
-      alert('Access Denied (สิทธิ์ไม่เพียงพอ):\nเฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่สามารถลบข้อมูลระบบได้')
+      alert('Access Denied:\nOnly administrators can delete system data.')
       return
     }
     if (!window.confirm('Are you sure you want to delete this item?')) return
@@ -1034,7 +1095,7 @@ function App() {
 
   const handleStartEditItem = (item) => {
     if (!canManageSystemTopics(currentUser)) {
-      alert('Access Denied (สิทธิ์ไม่เพียงพอ):\nเฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่สามารถแก้ไขข้อมูลระบบได้')
+      alert('Access Denied:\nOnly administrators can edit system data.')
       return
     }
     setManageEditingId(item.id)
@@ -1043,7 +1104,7 @@ function App() {
 
   const handleSaveEditItem = (id) => {
     if (!canManageSystemTopics(currentUser)) {
-      alert('Access Denied (สิทธิ์ไม่เพียงพอ):\nเฉพาะผู้ดูแลระบบ (Admin) เท่านั้นที่สามารถแก้ไขข้อมูลระบบได้')
+      alert('Access Denied:\nOnly administrators can edit system data.')
       return
     }
     if (!manageEditingText.trim()) return
@@ -1071,16 +1132,12 @@ function App() {
     const drugToDelete = savedDrugsList.find(d => d.id === id)
     if (!canDeleteLabel(currentUser, drugToDelete)) {
       const denial = getPermissionDenialReason(currentUser, 'delete', drugToDelete)
-      alert(`Access Denied (สิทธิ์ไม่เพียงพอ):\n${denial.th}`)
+      alert(`Access Denied:\n${denial.en}`)
       return
     }
     if (!window.confirm(`Are you sure you want to delete "${name}" from the database?`)) return
     try {
-      const { error } = await supabase
-        .from('medication_templates')
-        .delete()
-        .eq('id', id)
-      if (error) throw error
+      await deleteMedication(currentUser, drugToDelete || { id, med_name: name })
       setSavedDrugsList(prev => prev.filter(d => d.id !== id))
     } catch (err) {
       alert('Error deleting medication: ' + err.message)
@@ -1097,7 +1154,7 @@ function App() {
   const handleClearAll = (e, silent = false) => {
     if (e && e.preventDefault) e.preventDefault();
     if (!silent) {
-      const confirmClear = window.confirm("คุณต้องการล้างข้อมูลยาทั้งหมดใช่หรือไม่?\n(ข้อมูลที่ยังไม่ได้บันทึกจะหายไป)");
+      const confirmClear = window.confirm("Clear all medication data on this page?\n(Unsaved changes will be lost.)");
       if (!confirmClear) return;
     }
     setDrugName('');
@@ -1105,105 +1162,83 @@ function App() {
     setContents(Array(8).fill(''));
     setActiveMedId(null);
     setActiveMedDetails(null);
+    setAiGenerated(false);
+    setApprovalChecked(false);
     if (drugGroups.length > 0) setDrugGroup(drugGroups[0]);
   };
 
   // ฟังก์ชันเซฟข้อมูล (Upsert with RBAC & Resource Ownership)
-  const handleSaveTemplate = async () => {
-    if (!drugName) return alert("กรุณาใส่ชื่อยาก่อนเซฟ")
+  // Save: check the basics and permissions, then ask for approval in a dialog
+  const handleSaveTemplate = () => {
+    if (isSaving) return
+    if (!drugName) return alert("Please enter a medication name before saving.")
 
     // Security Gate: Check Permissions
     if (activeMedId) {
       if (!canEditLabel(currentUser, activeMedDetails)) {
         const denial = getPermissionDenialReason(currentUser, 'edit', activeMedDetails)
-        alert(`Access Denied (สิทธิ์ไม่เพียงพอ):\n${denial.th}`)
+        alert(`Access Denied:\n${denial.en}`)
         return
       }
     } else {
       if (!canCreateLabel(currentUser)) {
         const denial = getPermissionDenialReason(currentUser, 'create')
-        alert(`Access Denied (สิทธิ์ไม่เพียงพอ):\n${denial.th}`)
+        alert(`Access Denied:\n${denial.en}`)
         return
       }
       if (currentUser?.role === ROLES.PHARMACIST && !canAccessMedicineCategory(currentUser, drugGroup)) {
-        alert(`Access Denied (สิทธิ์ไม่เพียงพอ):\nเภสัชกรไม่มีสิทธิ์สร้างยาในหมวด "${drugGroup}" (อนุญาตเฉพาะ: ${currentUser?.allowedCategories?.join(', ') || 'ไม่มี'})`)
+        alert(`Access Denied:\nPharmacists cannot create labels in group "${drugGroup}" (allowed: ${currentUser?.allowedCategories?.join(', ') || 'none'})`)
         return
       }
     }
 
+    setApprovalChecked(false)
+    setApprovalPrompt('save')
+  }
+
+  // Runs after the user ticked the approval box in the dialog
+  const performSave = async () => {
     const medData = {
       med_name: drugName,
       med_group: drugGroup,
       med_type: drugType,
       contents: contents,
-      last_updated_by: currentUser?.name || currentUser?.email || 'User',
-      last_updated_by_role: currentUser?.role || 'STAFF',
-      updated_at: new Date()
+      approve: true, // recorded on the server as approved by the signed-in user
+      ...(aiGenerated ? { ai_generated: true } : {})
     }
 
-    // Attach creator ownership metadata if new
-    if (!activeMedId && currentUser) {
-      medData.created_by = currentUser.id
-      medData.created_by_name = currentUser.name
-      medData.created_by_role = currentUser.role
-    }
-
+    setIsSaving(true)
     try {
-      let result;
-      let targetMedId = activeMedId;
+      // 1. Save the content first, so a slow PDF/QR upload can never block the save
+      let saved = await saveMedication(currentUser, activeMedId || null, medData)
+      setActiveMedId(saved.id)
+      setActiveMedDetails(saved)
 
-      if (activeMedId) {
-        // Pre-generate / update QR code URL and upload PDF
-        try {
-          const qrInfo = await generateAndDistributeQRCode({ ...medData, id: activeMedId })
-          medData.qr_code_url = qrInfo.finalUrl
-        } catch (qrErr) {
-          console.warn('QR Code generation notice:', qrErr)
+      // 2. Best effort: rebuild the PDF / QR link for this label
+      let qrWarning = ''
+      try {
+        const qrInfo = await withTimeout(
+          generateAndDistributeQRCode({ ...medData, id: saved.id }),
+          30000,
+          'Creating the PDF / QR code'
+        )
+        if (qrInfo?.finalUrl && qrInfo.finalUrl !== saved.qr_code_url) {
+          saved = await saveMedication(currentUser, saved.id, { qr_code_url: qrInfo.finalUrl })
+          setActiveMedDetails(saved)
         }
-
-        // ถ้าเป็นยาเก่าที่มี ID อยู่แล้ว ให้ Update
-        result = await supabase
-          .from('medication_templates')
-          .update(medData)
-          .eq('id', activeMedId)
-          .select()
-
-        if (result.data && result.data.length > 0) {
-          setActiveMedDetails(result.data[0])
-        }
-      } else {
-        // ถ้าเป็นยาใหม่ ให้ Insert
-        result = await supabase
-          .from('medication_templates')
-          .insert([medData])
-          .select()
-
-        if (result.data && result.data.length > 0) {
-          targetMedId = result.data[0].id
-          setActiveMedId(targetMedId)
-
-          // Automatically generate PDF and QR code for newly assigned ID and save
-          try {
-            const qrInfo = await generateAndDistributeQRCode({ ...medData, id: targetMedId })
-            await supabase
-              .from('medication_templates')
-              .update({ qr_code_url: qrInfo.finalUrl })
-              .eq('id', targetMedId)
-
-            const savedRecord = { ...result.data[0], qr_code_url: qrInfo.finalUrl }
-            setActiveMedDetails(savedRecord)
-          } catch (qrErr) {
-            console.warn('QR Code generation notice for new drug:', qrErr)
-            setActiveMedDetails(result.data[0])
-          }
-        }
+      } catch (qrErr) {
+        console.warn('QR Code generation notice:', qrErr)
+        qrWarning = '\n\n(The PDF / QR code could not be updated: ' + (qrErr?.message || qrErr) + ')'
       }
 
-      if (result.error) throw result.error
-      alert("บันทึกข้อมูล สร้างเอกสาร PDF และ QR Code สำเร็จแล้ว!")
+      alert(`Saved and approved by ${currentUser?.name || 'you'}. The label has been stored in the database.` + qrWarning)
+      setApprovalChecked(false)
       fetchAllSavedDrugs()
     } catch (err) {
-      alert("Save Error: " + err.message)
+      console.error('Save error:', err)
+      alert('Save failed:\n' + (err?.message || err))
+    } finally {
+      setIsSaving(false)
     }
   }
 
@@ -1234,7 +1269,7 @@ function App() {
 
   const openQrModalForCurrentEditor = () => {
     if (!activeMedId) {
-      alert('กรุณาบันทึกข้อมูลยาก่อนเปิดดูหรือแจกจ่าย QR Code\n(Please save the medication template first to generate its unique QR link)')
+      alert('Please save the medication template first to generate its QR code link.')
       return
     }
     const currentMed = activeMedDetails || {
@@ -1262,12 +1297,13 @@ function App() {
       setQrDataUrl(qrInfo.dataUrl)
       setQrSvgString(qrInfo.svgString)
 
-      const { error } = await supabase
-        .from('medication_templates')
-        .update({ qr_code_url: qrInfo.finalUrl })
-        .eq('id', qrModalMed.id)
-
-      if (error) throw error
+      await saveMedication(currentUser, qrModalMed.id, { qr_code_url: qrInfo.finalUrl })
+      logActivity(currentUser, {
+        action: 'generate_qr',
+        targetTable: 'medication_templates',
+        targetId: qrModalMed.id,
+        targetName: qrModalMed.med_name
+      })
 
       const updatedMed = { ...qrModalMed, qr_code_url: qrInfo.finalUrl }
       setQrModalMed(updatedMed)
@@ -1345,7 +1381,17 @@ function App() {
   const topics = PIL_TOPIC_NAMES
 
   // --- 7. PDF Export ---
+  // Export: signed-in editors approve first; guests (read-only) export directly
   const handleExportPDF = () => {
+    if (!currentUser || currentUser.isGuest || currentUser.role === ROLES.GUEST) {
+      performExport()
+      return
+    }
+    setApprovalChecked(false)
+    setApprovalPrompt('export')
+  }
+
+  const performExport = () => {
     try {
       const doc = generateMedicationPdfDoc({
         med_name: drugName,
@@ -1353,7 +1399,13 @@ function App() {
         med_type: drugType,
         contents: contents
       }, topics)
-      doc.save(`ฉลากยา_${drugName || 'Export'}.pdf`)
+      doc.save(`PIL_${drugName || 'Export'}.pdf`)
+      logActivity(currentUser, {
+        action: 'export_pdf',
+        targetTable: 'medication_templates',
+        targetId: activeMedId,
+        targetName: drugName || null
+      })
     } catch (err) {
       alert('PDF Error: ' + err.message)
     }
@@ -1373,7 +1425,7 @@ function App() {
             value={contents[num]}
             onChange={(e) => handleHelperSearch(e.target.value, num)}
             onBlur={() => setTimeout(() => setSuggestions([]), 250)}
-            placeholder="พิมพ์เพื่อค้นหาประโยคมาตรฐาน..."
+            placeholder="Type to search standard phrases..."
           />
           {activeTopicForSearch === num && suggestions.length > 0 && (
             <div className={`inline-suggestions ${isBottomTopic ? 'pop-up' : 'pop-down'}`}>
@@ -1402,23 +1454,23 @@ function App() {
         {directPdfLoading ? (
           <div className="direct-pdf-loading-box">
             <div className="direct-pdf-spinner"></div>
-            <p className="direct-pdf-text-th">กำลังเปิดเอกสารฉลากยา PDF...</p>
+            <p className="direct-pdf-text-th">Opening the medication leaflet PDF...</p>
             <p className="direct-pdf-text-en">Opening PDF document...</p>
           </div>
         ) : directPdfError ? (
           <div className="direct-pdf-error-box">
             <div className="direct-pdf-error-icon">⚠️</div>
-            <h3 className="direct-pdf-error-title">เกิดข้อผิดพลาด</h3>
+            <h3 className="direct-pdf-error-title">Something went wrong</h3>
             <p className="direct-pdf-error-msg">{directPdfError}</p>
             <button className="direct-pdf-btn-back" onClick={() => window.location.href = '/'}>
-              กลับหน้าหลัก
+              Back to Home
             </button>
           </div>
         ) : (
           <div className="direct-pdf-loading-box">
             <div className="direct-pdf-spinner"></div>
-            <p className="direct-pdf-text-th">กำลังเปิดไฟล์ PDF สำหรับคุณ...</p>
-            <p className="direct-pdf-text-en">หากไฟล์ไม่เปิดอัตโนมัติ กรุณารอสักครู่หรือโหลดใหม่อีกครั้ง</p>
+            <p className="direct-pdf-text-th">Opening your PDF...</p>
+            <p className="direct-pdf-text-en">If the file does not open automatically, please wait a moment or reload the page.</p>
           </div>
         )}
       </div>
@@ -1432,6 +1484,11 @@ function App() {
         loading={pdfViewLoading}
         error={pdfViewError}
         onBackToHome={handleBackFromPdfView}
+        onBack={() => {
+          // Go to the previous page; opened directly (e.g. from a QR scan) -> go home
+          if (window.history.length > 1) window.history.back()
+          else handleBackFromPdfView()
+        }}
         topics={topics}
       />
     )
@@ -1814,13 +1871,13 @@ function App() {
                     <button
                       className="guest-sub-pill"
                       onClick={() => setActiveModal('import_word')}
-                      title="Import (.docx)"
+                      title="Import Image / PDF / Word"
                     >
                       <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                         <polyline points="14 2 14 8 20 8"></polyline>
                       </svg>
-                      <span>Import (.docx)</span>
+                      <span>Import File</span>
                     </button>
 
                     <button
@@ -1884,7 +1941,7 @@ function App() {
                   role="button"
                   tabIndex={0}
                   onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleStartNewDoc() }}
-                  title={!canCreateLabel(currentUser) ? 'ผู้เยี่ยมชม (Guest) มีสิทธิ์อ่านอย่างเดียว ไม่สามารถสร้างเอกสารใหม่ได้' : 'Create New Document'}
+                  title={!canCreateLabel(currentUser) ? 'Guest accounts are read-only and cannot create documents' : 'Create New Document'}
                 >
                   <div className="card-left-group">
                     <div className="card-icon-box icon-box-create">
@@ -1952,7 +2009,7 @@ function App() {
                 <button
                   className="dashboard-sub-pill"
                   onClick={() => setActiveModal('import_word')}
-                  title="Import from Word (.docx)"
+                  title="Import from Image, PDF or Word"
                 >
                   <svg className="pill-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
@@ -1960,7 +2017,7 @@ function App() {
                     <line x1="16" y1="13" x2="8" y2="13"></line>
                     <line x1="16" y1="17" x2="8" y2="17"></line>
                   </svg>
-                  <span>Import from Word (.docx)</span>
+                  <span>Import Image / PDF / Word</span>
                 </button>
 
                 <button
@@ -1976,6 +2033,50 @@ function App() {
                   </svg>
                   <span>Join with 6-digit Code</span>
                 </button>
+
+                {canCreateLabel(currentUser) && (
+                  <button
+                    className="dashboard-sub-pill"
+                    onClick={() => setActiveModal('ai_generate')}
+                    title="AI Generate PIL"
+                  >
+                    <svg className="pill-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path>
+                      <path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"></path>
+                    </svg>
+                    <span>AI Generate PIL</span>
+                  </button>
+                )}
+
+                {canViewOwnActivity(currentUser) && (
+                  <button
+                    className="dashboard-sub-pill"
+                    onClick={() => setCurrentView('my_work')}
+                    title="My Work"
+                  >
+                    <svg className="pill-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="9"></circle>
+                      <polyline points="12 7 12 12 15 14"></polyline>
+                    </svg>
+                    <span>My Work</span>
+                  </button>
+                )}
+
+                {canViewAdminPanel(currentUser) && (
+                  <button
+                    className="dashboard-sub-pill"
+                    onClick={() => setCurrentView('admin_users')}
+                    title="User Management (Admin)"
+                  >
+                    <svg className="pill-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                      <circle cx="9" cy="7" r="4"></circle>
+                      <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                      <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                    </svg>
+                    <span>User Management (Admin)</span>
+                  </button>
+                )}
               </div>
 
               {/* Card Footer: Supported by PSU */}
@@ -1995,7 +2096,24 @@ function App() {
         </main>
 
           {/* Interactive Modal for secondary features */}
-          {activeModal && (
+          {activeModal === 'ai_generate' && (
+            <AiGenerateModal
+              currentUser={currentUser}
+              topics={topics}
+              onClose={() => setActiveModal(null)}
+              onUseDraft={handleAiDraft}
+            />
+          )}
+
+          {activeModal === 'import_word' && (
+            <ImportDocumentModal
+              topics={topics}
+              onClose={() => setActiveModal(null)}
+              onImport={handleImportedDocument}
+            />
+          )}
+
+          {activeModal && activeModal !== 'import_word' && activeModal !== 'ai_generate' && (
             <div className="modal-backdrop" onClick={() => setActiveModal(null)}>
               <div className="modal-content-card" onClick={(e) => e.stopPropagation()}>
                 <button className="modal-close-btn" onClick={() => setActiveModal(null)}>✕</button>
@@ -2009,29 +2127,11 @@ function App() {
                         <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
                       </svg>
                     </div>
-                    <h3>จัดการข้อมูลคลังยาและหัวข้อ</h3>
-                    <p>ระบบบันทึกและจัดการคลังยาเชื่อมต่อกับฐานข้อมูล Supabase เรียบร้อยแล้ว ท่านสามารถค้นหายาเดิมและบันทึกเทมเพลตได้ทันทีในหน้าตัวแก้ไข</p>
+                    <h3>Manage Drug Library & Topics</h3>
+                    <p>The drug library is connected to the Supabase database. You can search existing medications and save templates in the editor.</p>
                     <div className="modal-action-row">
                       <button className="btn-modal-primary" onClick={() => { setActiveModal(null); setCurrentView('editor'); }}>
-                        ไปที่หน้าตัวแก้ไขข้อมูลยา
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {activeModal === 'import_word' && (
-                  <div className="modal-body-section">
-                    <div className="modal-icon-badge doc">
-                      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2">
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                        <polyline points="14 2 14 8 20 8"></polyline>
-                      </svg>
-                    </div>
-                    <h3>นำเข้าจากไฟล์ Word (.docx)</h3>
-                    <p>ฟังก์ชันนำเข้าไฟล์ Word อยู่ระหว่างพัฒนา ท่านสามารถกดเริ่มต้นสร้างเอกสารใหม่และกรอกข้อมูลในระบบได้ทันที</p>
-                    <div className="modal-action-row">
-                      <button className="btn-modal-primary" onClick={() => { setActiveModal(null); handleStartNewDoc(); }}>
-                        สร้างเอกสารใหม่
+                        Go to the Editor
                       </button>
                     </div>
                   </div>
@@ -2047,8 +2147,8 @@ function App() {
                         <rect x="3" y="14" width="7" height="7"></rect>
                       </svg>
                     </div>
-                    <h3>เข้าร่วมด้วยรหัส 6 หลัก</h3>
-                    <p>ป้อนรหัส 6 หลักเพื่อดึงเทมเพลตยาหรือร่วมจัดการเอกสาร</p>
+                    <h3>Join with a 6-digit Code</h3>
+                    <p>Enter a 6-digit code to load a medication template or collaborate on a document.</p>
                     <div className="code-input-row">
                       <input
                         type="text"
@@ -2064,14 +2164,14 @@ function App() {
                         className="btn-modal-primary"
                         onClick={() => {
                           if (joinCode.length === 6) {
-                            alert(`กำลังค้นหารหัส: ${joinCode}`);
+                            alert(`Searching for code: ${joinCode}`);
                             setActiveModal(null);
                           } else {
-                            alert("กรุณาป้อนรหัสให้ครบ 6 หลัก");
+                            alert("Please enter all 6 digits.");
                           }
                         }}
                       >
-                        ยืนยันรหัส
+                        Confirm Code
                       </button>
                     </div>
                   </div>
@@ -2638,7 +2738,7 @@ function App() {
                         value={selectedSubTopic}
                         onChange={(e) => setSelectedSubTopic(e.target.value)}
                         disabled={isLoadingTopic}
-                        title="เลือกรหัสหัวข้อย่อย (Sub Topic)"
+                        title="Select a sub-topic"
                       >
                         {TOPIC_SUB_OPTIONS[manageSubCategory].map(opt => (
                           <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -2785,7 +2885,7 @@ function App() {
                             <button
                               className={`manage-use-btn ${!canEditThis ? 'read-only' : ''}`}
                               onClick={() => { selectMedTemplate(drug); setCurrentView('editor'); }}
-                              title={canEditThis ? "Open in Editor" : denialReason?.th}
+                              title={canEditThis ? "Open in Editor" : denialReason?.en}
                             >
                               {canEditThis ? 'Open in Editor' : 'View (Read-Only)'}
                             </button>
@@ -2803,7 +2903,7 @@ function App() {
                             ) : (
                               <span
                                 className="manage-locked-tag"
-                                title={getPermissionDenialReason(currentUser, 'delete', drug).th}
+                                title={getPermissionDenialReason(currentUser, 'delete', drug).en}
                               >
                                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                                   <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
@@ -3008,6 +3108,67 @@ function App() {
         )
       )}
 
+      {/* --- APPROVAL DIALOG (Save Template / Export PDF) --- */}
+      {approvalPrompt && (
+        <div className="approval-backdrop" onClick={() => setApprovalPrompt(null)}>
+          <div className="approval-card" role="dialog" aria-modal="true" aria-labelledby="approval-title" onClick={(e) => e.stopPropagation()}>
+            <h3 id="approval-title" className="approval-title">
+              {approvalPrompt === 'save' ? 'Review & approve before saving' : 'Review & approve before exporting'}
+            </h3>
+            <p className="approval-drug">{drugName || 'Untitled medication'}</p>
+            {(aiGenerated || activeMedDetails?.ai_generated) && (
+              <div className="pil-ai-banner">
+                <strong>AI-generated content.</strong> This leaflet was drafted by AI and may contain errors.
+                Make sure every section has been checked against reliable sources.
+              </div>
+            )}
+            <label className={`pil-approval-check ${approvalChecked ? 'checked' : ''}`}>
+              <input
+                type="checkbox"
+                checked={approvalChecked}
+                onChange={(e) => setApprovalChecked(e.target.checked)}
+                autoFocus
+              />
+              <span>
+                I, <strong>{currentUser?.name || currentUser?.email}</strong> ({currentUser?.role}), have reviewed and
+                approve this PIL{aiGenerated || activeMedDetails?.ai_generated ? ', including the AI-generated content' : ''}.
+              </span>
+            </label>
+            <div className="approval-actions">
+              <button className="approval-btn" onClick={() => setApprovalPrompt(null)}>Cancel</button>
+              <button
+                className="approval-btn primary"
+                onClick={handleApprovalConfirm}
+                disabled={!approvalChecked}
+                title={!approvalChecked ? 'Tick the approval box first' : ''}
+              >
+                {approvalPrompt === 'save' ? 'Approve & Save' : 'Approve & Export PDF'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- ADMIN USERS / MY WORK VIEW --- */}
+      {!showLogin && currentView === 'admin_users' && canViewAdminPanel(currentUser) && (
+        <UserActivityPanel
+          currentUser={currentUser}
+          mode="admin"
+          topics={topics}
+          onBack={() => setCurrentView('dashboard')}
+          onEditLabel={handleEditLabelFromPanel}
+        />
+      )}
+      {!showLogin && currentView === 'my_work' && canViewOwnActivity(currentUser) && (
+        <UserActivityPanel
+          currentUser={currentUser}
+          mode="self"
+          topics={topics}
+          onBack={() => setCurrentView('dashboard')}
+          onEditLabel={handleEditLabelFromPanel}
+        />
+      )}
+
       {/* --- 3. EDITOR VIEW (หน้ากรอกข้อมูลยาเดิม) --- */}
       {!showLogin && currentView === 'editor' && (
         <>
@@ -3018,12 +3179,12 @@ function App() {
                 <button
                   className="btn-back-to-dashboard"
                   onClick={handleBackToDashboard}
-                  title="กลับสู่หน้าหลัก"
+                  title="Back to Home"
                 >
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="m15 18-6-6 6-6"/>
                   </svg>
-                  <span>หน้าหลัก</span>
+                  <span>Home</span>
                 </button>
                 <img src="/image/psu-logo.png" alt="PSU Logo" className="nav-logo" />
                 {currentUser && (
@@ -3049,10 +3210,10 @@ function App() {
                     <button
                       className={`btn-save-nav ${!canSave ? 'guarded-disabled' : ''}`}
                       onClick={handleSaveTemplate}
-                      disabled={!canSave}
-                      title={!canSave ? denial?.th : 'Save Template'}
+                      disabled={!canSave || isSaving}
+                      title={!canSave ? denial?.en : 'Save Template'}
                     >
-                      {!canSave ? 'Save (Locked)' : 'Save Template'}
+                      {!canSave ? 'Save (Locked)' : (isSaving ? 'Saving...' : 'Save Template')}
                     </button>
                   )
                 })()}
@@ -3060,7 +3221,7 @@ function App() {
                   className="btn-clear-nav"
                   onClick={(e) => handleClearAll(e)}
                   disabled={!currentUser || currentUser?.role === ROLES.GUEST}
-                  title={currentUser?.role === ROLES.GUEST ? 'ผู้เยี่ยมชมไม่สามารถแก้ไขข้อมูลได้' : 'Clear All'}
+                  title={currentUser?.role === ROLES.GUEST ? 'Guest accounts cannot edit data' : 'Clear All'}
                 >
                   Clear All
                 </button>
@@ -3085,7 +3246,8 @@ function App() {
 
           {/* --- EDITOR CANVAS --- */}
           <main className="pil-editor-canvas">
-            {/* Permission Guard Notification Banner for Editor */}
+            {/* Notices above the document (permissions, AI content, last approval) */}
+            <div className="editor-notices">
             {(() => {
               const canSave = activeMedId
                 ? canEditLabel(currentUser, activeMedDetails)
@@ -3115,11 +3277,26 @@ function App() {
                     </svg>
                   </span>
                   <span>
-                    <strong>Access Control Notice ({currentUser?.title || 'Notice'}):</strong> {denial?.th}
+                    <strong>Access Control Notice ({currentUser?.title || 'Notice'}):</strong> {denial?.en}
                   </span>
                 </div>
               )
             })()}
+
+            {/* AI-content warning and last approval (approval itself happens in the Save / Export dialog) */}
+            {(aiGenerated || activeMedDetails?.ai_generated) && (
+              <div className="pil-ai-banner">
+                <strong>AI-generated content.</strong> This leaflet {aiGenerated ? 'was drafted' : 'was originally drafted'} by AI and may contain errors.
+                Check every section against reliable sources before approving.
+              </div>
+            )}
+            {activeMedDetails?.approved_by_name && (
+              <div className="pil-approval-last">
+                Last approved by {activeMedDetails.approved_by_name}
+                {activeMedDetails.approved_at ? ` on ${new Date(activeMedDetails.approved_at).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}` : ''}
+              </div>
+            )}
+            </div>
 
             <div className="pil-paper-shadow">
               <section className="pil-column">
@@ -3127,7 +3304,7 @@ function App() {
                   <div className="search-container">
                     <input
                       type="text"
-                      placeholder="ค้นหาหรือป้อนชื่อยา..."
+                      placeholder="Search or enter a medication name..."
                       className="input-drug-name"
                       value={drugName}
                       onChange={(e) => handleDrugNameChange(e.target.value)}
@@ -3137,7 +3314,7 @@ function App() {
                         {medSuggestions.map((m) => (
                           <div key={m.id} className="med-suggestion-item" onClick={() => selectMedTemplate(m)}>
                             <div className="med-suggest-name">{m.med_name}</div>
-                            <div className="med-suggest-type">{m.med_type || 'ไม่ระบุชนิด'}</div>
+                            <div className="med-suggest-type">{m.med_type || 'Dosage form not specified'}</div>
                           </div>
                         ))}
                       </div>
@@ -3148,7 +3325,7 @@ function App() {
                   </select>
                   <input
                     type="text"
-                    placeholder="ใส่ชนิดยา..."
+                    placeholder="Enter dosage form..."
                     className="input-drug-type"
                     value={drugType}
                     onChange={(e) => setDrugType(e.target.value)}
@@ -3235,13 +3412,13 @@ function App() {
                     <path d="M12 18h.01" />
                     <path d="M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z" />
                   </svg>
-                  <span>สแกนด้วยกล้องมือถือเพื่อเปิดไฟล์ PDF โดยตรง (Direct PDF Link)</span>
+                  <span>Scan with a phone camera to open the PDF directly</span>
                 </div>
               </div>
 
               {/* Deep Link URL Box */}
               <div className="qr-url-card">
-                <label className="qr-url-label">Direct PDF URL (ลิงก์ตรงสำหรับเปิดเอกสาร PDF)</label>
+                <label className="qr-url-label">Direct PDF URL</label>
                 <div className="qr-url-row">
                   <input
                     type="text"
@@ -3310,7 +3487,7 @@ function App() {
                     href={qrModalMed.qr_code_url || getDirectPdfUrl(qrModalMed.id)}
                     target="_blank"
                     rel="noreferrer"
-                    title="เปิดไฟล์เอกสารฉลากยา PDF โดยตรง"
+                    title="Open the leaflet PDF directly"
                   >
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -3319,7 +3496,7 @@ function App() {
                       <line x1="16" y1="17" x2="8" y2="17" />
                       <polyline points="10 9 9 9 8 9" />
                     </svg>
-                    <span>เปิดไฟล์ PDF โดยตรง</span>
+                    <span>Open PDF Directly</span>
                   </a>
 
                   {/* Packaging Sticker Print (Admin, Pharmacist, Staff) */}

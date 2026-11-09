@@ -357,7 +357,7 @@ export function printPackagingSticker(drug, qrImageSrc) {
             <div class="med-name">${drugName}</div>
             <div class="med-type">${drugType}</div>
             <div class="scan-instructions">
-              สแกน QR Code ด้วยกล้องสมาร์ทโฟน เพื่อเปิดเอกสารกำกับยาฉบับ PDF โดยตรงทันที
+              Scan this QR code with your smartphone camera to open the medication leaflet PDF.
             </div>
           </div>
         </div>

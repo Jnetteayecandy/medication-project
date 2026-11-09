@@ -228,7 +228,11 @@ export function AuthProvider({ children }) {
 
     initAuth()
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    // IMPORTANT: this callback must not await other Supabase calls. supabase-js runs it while
+    // holding its auth lock, so awaiting a query here deadlocks every later Supabase request
+    // (e.g. after a token refresh when the tab regains focus), making Save hang silently.
+    // Defer the profile load with setTimeout instead.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!isMounted) return
 
       if (session?.user) {
@@ -237,7 +241,12 @@ export function AuthProvider({ children }) {
           localStorage.removeItem('med_guest_mode')
           sessionStorage.removeItem('med_guest_mode')
         } catch { /* ignore */ }
-        await loadUserProfile(session.user)
+        const authUser = session.user
+        setTimeout(() => {
+          if (!isMounted) return
+          loadUserProfile(authUser).finally(() => { if (isMounted) setLoading(false) })
+        }, 0)
+        return
       } else {
         if (sessionStorage.getItem('custom_auth_session')) {
           // Keep active custom auth session
@@ -356,7 +365,7 @@ export function AuthProvider({ children }) {
     }
 
     if (existingUser) {
-      throw new Error('Username นี้มีผู้ใช้งานแล้ว กรุณาเลือก Username อื่น')
+      throw new Error('This username is already taken. Please choose another one.')
     }
 
     // 2. ทำการบันทึก (Insert) บัญชีใหม่ลงในตาราง auth
