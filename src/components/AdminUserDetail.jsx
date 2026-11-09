@@ -11,7 +11,7 @@ const PAGE_SIZE = 20
  * Details for a single user: labels they created + activity history timeline.
  * Used on the Admin page (viewing others) and on the "My Work" page (isSelf).
  */
-export default function AdminUserDetail({ user, topics, isSelf = false, onOpenLabel }) {
+export default function AdminUserDetail({ user, topics, isSelf = false, onOpenLabel, onEditLabel, canEdit }) {
   const [tab, setTab] = useState('labels') // 'labels' | 'activity'
   const conf = ROLE_CONFIG[user.role] || ROLE_CONFIG.STAFF
 
@@ -42,13 +42,13 @@ export default function AdminUserDetail({ user, topics, isSelf = false, onOpenLa
       </div>
 
       {tab === 'labels'
-        ? <UserLabels userId={user.id} onOpenLabel={onOpenLabel} />
+        ? <UserLabels userId={user.id} onOpenLabel={onOpenLabel} onEditLabel={onEditLabel} canEdit={canEdit} />
         : <UserActivity userId={user.id} topics={topics} isSelf={isSelf} />}
     </div>
   )
 }
 
-function UserLabels({ userId, onOpenLabel }) {
+function UserLabels({ userId, onOpenLabel, onEditLabel, canEdit }) {
   const [labels, setLabels] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -84,8 +84,8 @@ function UserLabels({ userId, onOpenLabel }) {
   return (
     <ul className="uap-label-list">
       {labels.map(med => (
-        <li key={med.id}>
-          <button className="uap-label-item" onClick={() => onOpenLabel(med)} title="Open PIL document">
+        <li key={med.id} className="uap-label-row">
+          <button className="uap-label-item" onClick={() => onOpenLabel(med)} title="View PIL document">
             <span className="uap-label-main">
               <span className="uap-label-name">{med.med_name || '(Untitled medication)'}</span>
               <span className="uap-muted">{[med.med_group, med.med_type].filter(Boolean).join(' · ') || '-'}</span>
@@ -95,6 +95,12 @@ function UserLabels({ userId, onOpenLabel }) {
               {med.last_updated_by && <span className="uap-muted">by {med.last_updated_by}</span>}
             </span>
           </button>
+          <div className="uap-label-actions">
+            <button className="uap-btn" onClick={() => onOpenLabel(med)} title="View PIL document">View</button>
+            {onEditLabel && (canEdit ? canEdit(med) : true) && (
+              <button className="uap-btn uap-btn-primary" onClick={() => onEditLabel(med)} title="Edit in the editor">Edit</button>
+            )}
+          </div>
         </li>
       ))}
     </ul>

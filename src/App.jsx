@@ -354,6 +354,7 @@ function App() {
   const [activeMedId, setActiveMedId] = useState(null) // เก็บ ID ยาที่กำลังแก้ไข
   const [activeMedDetails, setActiveMedDetails] = useState(null) // เก็บ Object ข้อมูลยาที่กำลังแก้ไขสำหรับตรวจ Ownership
   const [isSaving, setIsSaving] = useState(false)
+  const [editorReturnView, setEditorReturnView] = useState(null) // view to return to from the editor
   const [drugGroup, setDrugGroup] = useState('')
   const [drugGroups, setDrugGroups] = useState([])
   const [drugName, setDrugName] = useState('')
@@ -770,6 +771,18 @@ function App() {
   }
 
   // --- 6. Navigation Actions ---
+  // Open a saved label in the editor (from My Work / User Management)
+  const handleEditLabelFromPanel = (med) => {
+    if (!canEditLabel(currentUser, med)) {
+      const denial = getPermissionDenialReason(currentUser, 'edit', med)
+      alert(`Access Denied:\n${denial.en}`)
+      return
+    }
+    selectMedTemplate(med)
+    setEditorReturnView(currentView)
+    setCurrentView('editor')
+  }
+
   // Fill the editor with text imported from an image / PDF / Word file
   const handleImportedDocument = (doc) => {
     handleClearAll(null, true)
@@ -779,16 +792,22 @@ function App() {
     ;(doc.contents || []).forEach((c, i) => { if (i < 8) imported[i] = c || '' })
     setContents(imported)
     setActiveModal(null)
+    setEditorReturnView(null)
     setCurrentView('editor')
   }
 
   const handleStartNewDoc = () => {
     handleClearAll(null, true) // เคลียร์ฟอร์มเตรียมพร้อมสำหรับเอกสารใหม่
+    setEditorReturnView(null)
     setCurrentView('editor')
   }
 
   const handleBackToDashboard = () => {
-    if (currentUser?.isGuest) {
+    if (editorReturnView) {
+      // Opened from My Work / User Management: go back there
+      setCurrentView(editorReturnView)
+      setEditorReturnView(null)
+    } else if (currentUser?.isGuest) {
       setCurrentView('manage_data')
     } else {
       setCurrentView('dashboard')
@@ -3030,6 +3049,7 @@ function App() {
           mode="admin"
           topics={topics}
           onBack={() => setCurrentView('dashboard')}
+          onEditLabel={handleEditLabelFromPanel}
         />
       )}
       {!showLogin && currentView === 'my_work' && canViewOwnActivity(currentUser) && (
@@ -3038,6 +3058,7 @@ function App() {
           mode="self"
           topics={topics}
           onBack={() => setCurrentView('dashboard')}
+          onEditLabel={handleEditLabelFromPanel}
         />
       )}
 

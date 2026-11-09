@@ -2,6 +2,7 @@ import { useState } from 'react'
 import AdminUserList from './AdminUserList'
 import AdminUserDetail from './AdminUserDetail'
 import DedicatedPdfView from './DedicatedPdfView'
+import { canEditLabel } from '../utils/permissions'
 import './UserActivityPanel.css'
 
 /**
@@ -9,7 +10,7 @@ import './UserActivityPanel.css'
  * - mode 'admin': Admin sees every user → click through to each user's details
  * - mode 'self' : regular users see only their own work
  */
-export default function UserActivityPanel({ currentUser, mode = 'admin', onBack, topics }) {
+export default function UserActivityPanel({ currentUser, mode = 'admin', onBack, onEditLabel, topics }) {
   const isSelf = mode === 'self'
   const [selectedUser, setSelectedUser] = useState(null)
   const [openLabel, setOpenLabel] = useState(null)
@@ -70,6 +71,8 @@ export default function UserActivityPanel({ currentUser, mode = 'admin', onBack,
             topics={topics}
             isSelf={isSelf}
             onOpenLabel={setOpenLabel}
+            onEditLabel={onEditLabel}
+            canEdit={(med) => canEditLabel(currentUser, med)}
           />
         ) : (
           <AdminUserList onSelectUser={setSelectedUser} />

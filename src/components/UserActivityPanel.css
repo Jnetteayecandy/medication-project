@@ -296,7 +296,39 @@
   gap: 8px;
 }
 
+.uap-label-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.uap-label-actions {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+}
+
+.uap-label-actions .uap-btn {
+  justify-content: center;
+  min-width: 72px;
+}
+
+.uap-btn-primary {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #ffffff;
+}
+
+.uap-btn-primary:hover:not(:disabled) {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+  color: #ffffff !important;
+}
+
 .uap-label-item {
+  flex: 1;
+  min-width: 0;
   width: 100%;
   display: flex;
   justify-content: space-between;
@@ -470,6 +502,18 @@
 
   .uap-label-item {
     flex-direction: column;
+  }
+
+  .uap-label-row {
+    flex-direction: column;
+  }
+
+  .uap-label-actions {
+    flex-direction: row;
+  }
+
+  .uap-label-actions .uap-btn {
+    flex: 1;
   }
 
   .uap-label-side {
