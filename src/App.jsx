@@ -31,7 +31,7 @@ import CompleteProfile from './components/CompleteProfile'
 import GuidedTour from './components/GuidedTour'
 import UserActivityPanel from './components/UserActivityPanel'
 import { logActivity } from './utils/activityLogger'
-import { saveMedication, deleteMedication } from './utils/medicationStore'
+import { saveMedication, deleteMedication, withTimeout } from './utils/medicationStore'
 
 // Initial default manage data matching mockup
 const DEFAULT_MANAGE_DATA = {
@@ -352,6 +352,7 @@ function App() {
   // --- 3. Project State ---
   const [activeMedId, setActiveMedId] = useState(null) // เก็บ ID ยาที่กำลังแก้ไข
   const [activeMedDetails, setActiveMedDetails] = useState(null) // เก็บ Object ข้อมูลยาที่กำลังแก้ไขสำหรับตรวจ Ownership
+  const [isSaving, setIsSaving] = useState(false)
   const [drugGroup, setDrugGroup] = useState('')
   const [drugGroups, setDrugGroups] = useState([])
   const [drugName, setDrugName] = useState('')
@@ -1113,6 +1114,7 @@ function App() {
 
   // ฟังก์ชันเซฟข้อมูล (Upsert with RBAC & Resource Ownership)
   const handleSaveTemplate = async () => {
+    if (isSaving) return
     if (!drugName) return alert("Please enter a medication name before saving.")
 
     // Security Gate: Check Permissions
@@ -1141,35 +1143,37 @@ function App() {
       contents: contents
     }
 
+    setIsSaving(true)
     try {
-      let saved
+      // 1. Save the content first, so a slow PDF/QR upload can never block the save
+      let saved = await saveMedication(currentUser, activeMedId || null, medData)
+      setActiveMedId(saved.id)
+      setActiveMedDetails(saved)
 
-      if (activeMedId) {
-        // Existing label: rebuild PDF / QR link, then update
-        try {
-          const qrInfo = await generateAndDistributeQRCode({ ...medData, id: activeMedId })
-          medData.qr_code_url = qrInfo.finalUrl
-        } catch (qrErr) {
-          console.warn('QR Code generation notice:', qrErr)
-        }
-        saved = await saveMedication(currentUser, activeMedId, medData)
-      } else {
-        // New label: insert first to get an ID, then build PDF / QR for that ID
-        saved = await saveMedication(currentUser, null, medData)
-        setActiveMedId(saved.id)
-        try {
-          const qrInfo = await generateAndDistributeQRCode({ ...medData, id: saved.id })
+      // 2. Best effort: rebuild the PDF / QR link for this label
+      let qrWarning = ''
+      try {
+        const qrInfo = await withTimeout(
+          generateAndDistributeQRCode({ ...medData, id: saved.id }),
+          30000,
+          'Creating the PDF / QR code'
+        )
+        if (qrInfo?.finalUrl && qrInfo.finalUrl !== saved.qr_code_url) {
           saved = await saveMedication(currentUser, saved.id, { qr_code_url: qrInfo.finalUrl })
-        } catch (qrErr) {
-          console.warn('QR Code generation notice for new drug:', qrErr)
+          setActiveMedDetails(saved)
         }
+      } catch (qrErr) {
+        console.warn('QR Code generation notice:', qrErr)
+        qrWarning = '\n\n(The PDF / QR code could not be updated: ' + (qrErr?.message || qrErr) + ')'
       }
 
-      setActiveMedDetails(saved)
-      alert('Saved! The label, PDF and QR code have been stored in the database.')
+      alert('Saved! The label has been stored in the database.' + qrWarning)
       fetchAllSavedDrugs()
     } catch (err) {
+      console.error('Save error:', err)
       alert('Save failed:\n' + (err?.message || err))
+    } finally {
+      setIsSaving(false)
     }
   }
 
@@ -3070,10 +3074,10 @@ function App() {
                     <button
                       className={`btn-save-nav ${!canSave ? 'guarded-disabled' : ''}`}
                       onClick={handleSaveTemplate}
-                      disabled={!canSave}
+                      disabled={!canSave || isSaving}
                       title={!canSave ? denial?.th : 'Save Template'}
                     >
-                      {!canSave ? 'Save (Locked)' : 'Save Template'}
+                      {!canSave ? 'Save (Locked)' : (isSaving ? 'Saving...' : 'Save Template')}
                     </button>
                   )
                 })()}

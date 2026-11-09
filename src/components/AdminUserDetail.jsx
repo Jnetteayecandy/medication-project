@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
 import { ROLE_CONFIG } from '../context/AuthContext'
 import { ACTIVITY_LABELS } from '../utils/activityLogger'
-import { describeChanges, formatDateTime } from '../utils/activityFormat'
+import { describeChanges, formatDateTime, friendlyDbError } from '../utils/activityFormat'
+import { withTimeout } from '../utils/medicationStore'
 
 const PAGE_SIZE = 20
 
@@ -57,15 +58,20 @@ function UserLabels({ userId, onOpenLabel }) {
     const load = async () => {
       setLoading(true)
       setError(null)
-      const { data, error: err } = await supabase
-        .from('medication_templates')
-        .select('*')
-        .eq('created_by', userId)
-        .order('updated_at', { ascending: false })
-      if (cancelled) return
-      if (err) setError(err.message)
-      else setLabels(data || [])
-      setLoading(false)
+      try {
+        const { data, error: err } = await withTimeout(supabase
+          .from('medication_templates')
+          .select('*')
+          .eq('created_by', userId)
+          .order('updated_at', { ascending: false }), 20000, 'Loading labels')
+        if (cancelled) return
+        if (err) setError(friendlyDbError(err.message))
+        else setLabels(data || [])
+      } catch (e) {
+        if (!cancelled) setError(e.message || String(e))
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
     }
     load()
     return () => { cancelled = true }
@@ -122,17 +128,26 @@ function UserActivity({ userId, topics, isSelf }) {
       if (dateFrom) query = query.gte('created_at', new Date(`${dateFrom}T00:00:00`).toISOString())
       if (dateTo) query = query.lte('created_at', new Date(`${dateTo}T23:59:59.999`).toISOString())
 
-      const { data, error: err, count } = await query
-      if (cancelled) return
-      if (err) {
-        setError(err.message)
-        setLogs([])
-        setTotal(0)
-      } else {
-        setLogs(data || [])
-        setTotal(count || 0)
+      try {
+        const { data, error: err, count } = await withTimeout(query, 20000, 'Loading activity')
+        if (cancelled) return
+        if (err) {
+          setError(friendlyDbError(err.message))
+          setLogs([])
+          setTotal(0)
+        } else {
+          setLogs(data || [])
+          setTotal(count || 0)
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setError(e.message || String(e))
+          setLogs([])
+          setTotal(0)
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
       }
-      setLoading(false)
     }
     load()
     return () => { cancelled = true }

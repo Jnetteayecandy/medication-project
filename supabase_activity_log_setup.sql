@@ -3,11 +3,9 @@
 -- Project: Medication Label System (PIL)
 -- Purpose: เก็บประวัติการทำงานของผู้ใช้แต่ละคน ให้ Admin ตรวจสอบได้ว่าใครทำอะไรไปบ้าง
 --
--- รันไฟล์นี้ใน Supabase SQL Editor หลังจากรัน
---   1) supabase_profiles_setup.sql
---   2) supabase_rls_policies.sql
---   3) supabase_qr_setup.sql
--- ไฟล์นี้รันซ้ำได้ (idempotent)
+-- Run in the Supabase SQL Editor (safe to re-run):
+--   1) supabase_activity_log_setup.sql      <-- this file
+--   2) supabase_medication_save_setup.sql
 --
 -- หมายเหตุเรื่องการล็อกอิน:
 --   ระบบมีการล็อกอิน 2 แบบ คือ Supabase Auth (เช่น admin@test.com) และตาราง public.auth (custom)
@@ -18,11 +16,25 @@
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------
--- 1. เพิ่มคอลัมน์ last_updated_by_id (เดิม last_updated_by เก็บเป็นชื่อ/อีเมล ผูกกับผู้ใช้ไม่ได้แน่นอน)
---    ใช้ TEXT ให้ตรงกับคอลัมน์ created_by เดิม
+-- 1. Required columns (last_updated_by_id links edits to a user id; TEXT to match created_by)
 -- ----------------------------------------------------------------------------
+-- Make sure every column used by the app exists (the live database may never have run
+-- the older setup files). All statements are no-ops when the column is already there.
+ALTER TABLE IF EXISTS public.profiles
+  ADD COLUMN IF NOT EXISTS name TEXT,
+  ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'STAFF',
+  ADD COLUMN IF NOT EXISTS allowed_categories TEXT[] DEFAULT '{}',
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+
 ALTER TABLE IF EXISTS public.medication_templates
-  ADD COLUMN IF NOT EXISTS last_updated_by_id TEXT;
+  ADD COLUMN IF NOT EXISTS created_by TEXT,
+  ADD COLUMN IF NOT EXISTS created_by_name TEXT,
+  ADD COLUMN IF NOT EXISTS created_by_role TEXT,
+  ADD COLUMN IF NOT EXISTS last_updated_by TEXT,
+  ADD COLUMN IF NOT EXISTS last_updated_by_role TEXT,
+  ADD COLUMN IF NOT EXISTS last_updated_by_id TEXT,
+  ADD COLUMN IF NOT EXISTS qr_code_url TEXT,
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
 
 -- ----------------------------------------------------------------------------
 -- 2. ตาราง activity_logs

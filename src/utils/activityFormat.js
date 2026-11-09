@@ -63,3 +63,14 @@ export function describeChanges(changes, topics = []) {
   }
   return out
 }
+
+/**
+ * Explain database errors caused by setup SQL files that have not been run yet.
+ */
+export function friendlyDbError(message) {
+  const msg = String(message || '')
+  if (/does not exist|could not find|schema cache|PGRST20/i.test(msg)) {
+    return `${msg} — The database setup is incomplete. Run supabase_activity_log_setup.sql and then supabase_medication_save_setup.sql in the Supabase SQL Editor.`
+  }
+  return msg
+}

@@ -14,13 +14,18 @@
 -- and stamp who did it. Every user's work ends up in the database, and the activity-log
 -- trigger records it for the Admin page.
 --
--- Run order in the Supabase SQL Editor:
---   1) supabase_profiles_setup.sql
---   2) supabase_rls_policies.sql
---   3) supabase_qr_setup.sql
---   4) supabase_activity_log_setup.sql
---   5) supabase_medication_save_setup.sql   <-- this file (safe to re-run)
+-- Run in the Supabase SQL Editor (safe to re-run):
+--   1) supabase_activity_log_setup.sql
+--   2) supabase_medication_save_setup.sql   <-- this file
 -- ============================================================================
+
+-- Make sure every column used by the app exists (the live database may never have run
+-- the older setup files). All statements are no-ops when the column is already there.
+ALTER TABLE IF EXISTS public.profiles
+  ADD COLUMN IF NOT EXISTS name TEXT,
+  ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'STAFF',
+  ADD COLUMN IF NOT EXISTS allowed_categories TEXT[] DEFAULT '{}',
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
 
 ALTER TABLE IF EXISTS public.medication_templates
   ADD COLUMN IF NOT EXISTS created_by TEXT,
@@ -29,7 +34,8 @@ ALTER TABLE IF EXISTS public.medication_templates
   ADD COLUMN IF NOT EXISTS last_updated_by TEXT,
   ADD COLUMN IF NOT EXISTS last_updated_by_role TEXT,
   ADD COLUMN IF NOT EXISTS last_updated_by_id TEXT,
-  ADD COLUMN IF NOT EXISTS qr_code_url TEXT;
+  ADD COLUMN IF NOT EXISTS qr_code_url TEXT,
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
 
 -- ----------------------------------------------------------------------------
 -- 1. Permission helper: can `p_actor` write a label in `p_group` owned by `p_owner`?

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../supabaseClient'
 import { ROLES, ROLE_CONFIG } from '../context/AuthContext'
-import { formatDateTime } from '../utils/activityFormat'
+import { formatDateTime, friendlyDbError } from '../utils/activityFormat'
+import { withTimeout } from '../utils/medicationStore'
 
 /**
  * List of all users (Admin only) with a work summary for each user
@@ -24,13 +25,13 @@ export default function AdminUserList({ onSelectUser }) {
       setError(null)
       setSummaryWarning(null)
       try {
-        const [profilesRes, labelsRes, summaryRes] = await Promise.all([
+        const [profilesRes, labelsRes, summaryRes] = await withTimeout(Promise.all([
           supabase.from('profiles').select('*').order('created_at', { ascending: false }),
           supabase.from('medication_templates').select('id, created_by, last_updated_by_id, updated_at'),
           supabase.rpc('admin_user_activity_summary')
-        ])
+        ]), 20000, 'Loading users')
         if (cancelled) return
-        if (profilesRes.error) throw profilesRes.error
+        if (profilesRes.error) throw new Error(friendlyDbError(profilesRes.error.message))
 
         // Summary from medication_templates (already publicly readable)
         const byUser = {}
