@@ -94,6 +94,23 @@ export function canManageSystemTopics(user) {
 }
 
 /**
+ * Check if the user can open the Admin panel (view every user's labels and activity history).
+ * UI guard only: Supabase RLS (`is_admin()`) enforces the real restriction on `activity_logs`.
+ */
+export function canViewAdminPanel(user) {
+  if (!user || user.isGuest) return false
+  return user.role === ROLES.ADMIN
+}
+
+/**
+ * Check if the user can open their own "My Work" page.
+ */
+export function canViewOwnActivity(user) {
+  if (!user || user.isGuest || user.role === ROLES.GUEST) return false
+  return true
+}
+
+/**
  * Check if the user owns a specific label (created it themselves).
  */
 export function isLabelOwner(user, label) {

@@ -8,6 +8,8 @@ import {
   canDeleteLabel,
   canAccessMedicineCategory,
   canManageSystemTopics,
+  canViewAdminPanel,
+  canViewOwnActivity,
   isLabelOwner,
   getPermissionDenialReason
 } from './utils/permissions'
@@ -27,6 +29,8 @@ import {
 import DedicatedPdfView from './components/DedicatedPdfView'
 import CompleteProfile from './components/CompleteProfile'
 import GuidedTour from './components/GuidedTour'
+import UserActivityPanel from './components/UserActivityPanel'
+import { logActivity } from './utils/activityLogger'
 
 // Initial default manage data matching mockup
 const DEFAULT_MANAGE_DATA = {
@@ -309,7 +313,7 @@ function App() {
   const [signupSubmitting, setSignupSubmitting] = useState(false)
 
   // --- 2. Navigation State ---
-  const [currentView, setCurrentView] = useState('dashboard') // 'dashboard' | 'editor' | 'manage_data'
+  const [currentView, setCurrentView] = useState('dashboard') // 'dashboard' | 'editor' | 'manage_data' | 'admin_users' | 'my_work'
   const [activeModal, setActiveModal] = useState(null) // null | 'import_word' | 'join_code'
   const [joinCode, setJoinCode] = useState('')
 
@@ -631,7 +635,9 @@ function App() {
     if (loginSubmitting) return
     setLoginSubmitting(true)
     try {
-      await login(email, password)
+      const loginResult = await login(email, password)
+      const loggedInUser = loginResult?.data?.user
+      if (loggedInUser) logActivity(loggedInUser, { action: 'login' })
       setShowLogin(false)
       setCurrentView('dashboard')
       setEmail('')
@@ -1081,6 +1087,17 @@ function App() {
         .delete()
         .eq('id', id)
       if (error) throw error
+      logActivity(currentUser, {
+        action: 'delete',
+        targetTable: 'medication_templates',
+        targetId: id,
+        targetName: name,
+        changes: drugToDelete ? {
+          med_name: { old: drugToDelete.med_name ?? null, new: null },
+          med_group: { old: drugToDelete.med_group ?? null, new: null },
+          med_type: { old: drugToDelete.med_type ?? null, new: null }
+        } : null
+      })
       setSavedDrugsList(prev => prev.filter(d => d.id !== id))
     } catch (err) {
       alert('Error deleting medication: ' + err.message)
@@ -1138,6 +1155,7 @@ function App() {
       contents: contents,
       last_updated_by: currentUser?.name || currentUser?.email || 'User',
       last_updated_by_role: currentUser?.role || 'STAFF',
+      last_updated_by_id: currentUser?.id || null,
       updated_at: new Date()
     }
 
@@ -1268,6 +1286,12 @@ function App() {
         .eq('id', qrModalMed.id)
 
       if (error) throw error
+      logActivity(currentUser, {
+        action: 'generate_qr',
+        targetTable: 'medication_templates',
+        targetId: qrModalMed.id,
+        targetName: qrModalMed.med_name
+      })
 
       const updatedMed = { ...qrModalMed, qr_code_url: qrInfo.finalUrl }
       setQrModalMed(updatedMed)
@@ -1354,6 +1378,12 @@ function App() {
         contents: contents
       }, topics)
       doc.save(`ฉลากยา_${drugName || 'Export'}.pdf`)
+      logActivity(currentUser, {
+        action: 'export_pdf',
+        targetTable: 'medication_templates',
+        targetId: activeMedId,
+        targetName: drugName || null
+      })
     } catch (err) {
       alert('PDF Error: ' + err.message)
     }
@@ -1976,6 +2006,36 @@ function App() {
                   </svg>
                   <span>Join with 6-digit Code</span>
                 </button>
+
+                {canViewOwnActivity(currentUser) && (
+                  <button
+                    className="dashboard-sub-pill"
+                    onClick={() => setCurrentView('my_work')}
+                    title="ผลงานของฉัน"
+                  >
+                    <svg className="pill-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="9"></circle>
+                      <polyline points="12 7 12 12 15 14"></polyline>
+                    </svg>
+                    <span>ผลงานของฉัน</span>
+                  </button>
+                )}
+
+                {canViewAdminPanel(currentUser) && (
+                  <button
+                    className="dashboard-sub-pill"
+                    onClick={() => setCurrentView('admin_users')}
+                    title="จัดการผู้ใช้ (Admin)"
+                  >
+                    <svg className="pill-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                      <circle cx="9" cy="7" r="4"></circle>
+                      <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                      <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                    </svg>
+                    <span>จัดการผู้ใช้ (Admin)</span>
+                  </button>
+                )}
               </div>
 
               {/* Card Footer: Supported by PSU */}
@@ -3006,6 +3066,24 @@ function App() {
           </main>
         </div>
         )
+      )}
+
+      {/* --- ADMIN USERS / MY WORK VIEW --- */}
+      {!showLogin && currentView === 'admin_users' && canViewAdminPanel(currentUser) && (
+        <UserActivityPanel
+          currentUser={currentUser}
+          mode="admin"
+          topics={topics}
+          onBack={() => setCurrentView('dashboard')}
+        />
+      )}
+      {!showLogin && currentView === 'my_work' && canViewOwnActivity(currentUser) && (
+        <UserActivityPanel
+          currentUser={currentUser}
+          mode="self"
+          topics={topics}
+          onBack={() => setCurrentView('dashboard')}
+        />
       )}
 
       {/* --- 3. EDITOR VIEW (หน้ากรอกข้อมูลยาเดิม) --- */}
